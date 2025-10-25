@@ -20,7 +20,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get','patch'],url_path='m')
     def profile(self,request):
         user = UserService.get_current_user(request)
-        if request.meethod == 'patch':
+        if request.method == 'PATCH':
             data =request.data
             user = UserService.update_profile(user,data)
         serializer = ProfileSerializer(user)
