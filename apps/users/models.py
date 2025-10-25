@@ -11,7 +11,7 @@ class UserManager(BaseUserManager):
         user = self.model(email=email,**extra_fields)
         user.set_password(password)
         user.save(using=self._db)
-        user.save.user
+        user.save()
         return user
 class User(AbstractBaseUser):
     ROLE_CHOICES = (
