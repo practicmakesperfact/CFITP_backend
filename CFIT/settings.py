@@ -3,6 +3,8 @@
 from pathlib import Path
 from datetime import timedelta
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -78,14 +80,15 @@ ASGI_APPLICATION = 'CFIT.asgi.application'
 
 DATABASES = {
     'default': {
-       'ENGINE':'django.db.backends.postgresql',
-       'NAME':os.environ.get('POSTGRES_DB','feedback_portal'),
-       'USER': os.environ.get('POSTGRES_USER', 'user'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'password'),
-        'HOST': os.environ.get('POSTGRES_HOST', 'db'),
-        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': os.environ.get('DB_PORT'),
     }
 }
+
 
 
 # Password validation
@@ -126,9 +129,9 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-AUTTH_USER_MODEL = 'users.User'
+AUTH_USER_MODEL = 'users.User'
 REST_FRAMEWORK = {
-    'DFAULT_AUTHENTICATION_CLASSES': (
+    'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
@@ -153,7 +156,7 @@ CACHES = {
 }
 
 CELERY_BROKER_URL = os.environ.get('REDIS_URL','redis://redis:6379/1')
-CELERY_RSULT_BACKEND = os.environ.get('REDIS_URL','redis://redis:6379/1')
+CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL','redis://redis:6379/1')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
