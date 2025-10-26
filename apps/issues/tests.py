@@ -2,13 +2,12 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from .models import Issue
 from apps.users.models import User
-import uuid
 
 class IssueTests(TestCase):
-    def set_up(self):
+    def setUp(self):
         self.client = APIClient()
         self.user = User.objects.create_user(email='test@example.com', password='password', role='staff')
-        self.client.force_authenticate(self.user)
+        self.client.force_authenticate(user=self.user)
 
     def test_create_issue(self):
         response = self.client.post('/api/v1/issues/', {
@@ -16,4 +15,4 @@ class IssueTests(TestCase):
             'description': 'Desc',
             'priority': 'medium'
         })
-        self.assertEqual(response.status_code, 201)  
+        self.assertEqual(response.status_code, 201)
