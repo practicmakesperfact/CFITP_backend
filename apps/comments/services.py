@@ -1,4 +1,5 @@
 from .models import Comment
+from rest_framework.exceptions import PermissionDenied
 from apps.notifications.services import NotificationService
 import re
 
