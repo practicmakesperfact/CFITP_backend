@@ -1,4 +1,4 @@
-from rest_framework import viewset,status
+from rest_framework import viewsets,status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import Comment
@@ -8,7 +8,7 @@ from apps.issues.models import Issue
 from rest_framework.exceptions import PermissionDenied
  
 
-class CommentViewSet(viewset.ModelViewSet):
+class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
