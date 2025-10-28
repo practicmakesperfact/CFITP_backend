@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from apps.users.models import User
 import uuid
 
@@ -24,6 +25,11 @@ class Issue(models.Model):
     reporter =models.ForeignKey(User,related_name='reported_issues', on_delete=models.CASCADE)
     assignee =models.ForeignKey(User,related_name='assigned_issues', on_delete=models.CASCADE, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='issues'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 class IssueHistory(models.Model):

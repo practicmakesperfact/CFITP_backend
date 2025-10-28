@@ -5,14 +5,21 @@ from apps.users.serializers import UserSerializer
 class IssueSerializer(serializers.ModelSerializer):
     reporter = UserSerializer(read_only=True)
     assignee = UserSerializer(read_only=True)
+    created_by = UserSerializer(read_only=True)
 
     class Meta:
         model = Issue
         fields = '__all__'
-        read_only_fields = ('id', 'created_at', 'updated_at','reporter')
+        read_only_fields = (
+            'id',
+            'created_at',
+            'updated_at',
+            'reporter',
+            'created_by',  
+        )
+
 
 class IssueHistorySerializer(serializers.ModelSerializer):
-    
     class Meta:
         model = IssueHistory
         fields = '__all__'

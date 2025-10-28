@@ -5,6 +5,7 @@ class IssueService:
     @staticmethod
     def create_issue(user,data):
         data['reporter'] = user
+        data['created_by'] = user
         issue = Issue.objects.create(**data)
         IssueHistory.objects.create(issue=issue, changed_by=user,old_status='',new_status='open')
         return issue
