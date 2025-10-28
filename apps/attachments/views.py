@@ -13,10 +13,9 @@ class AttachmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        file = self.request.FILES.get('file')
-        # Related obj would be passed in data, but for simplicity, assume standalone or link later
-        attachment = AttachmentService.upload_attachment(self.request.user, file)
-        serializer.instance = attachment
+        serializer.save(uploaded_by=self.request.user)
+
+
 
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):

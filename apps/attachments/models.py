@@ -7,7 +7,7 @@ import hashlib
 
 class Attachment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    file = models.FileField(upload_to='attachments/', validators=[FileExtensionValidator(['pdf', 'jpg', 'png', 'doc', 'docx'])])
+    file = models.FileField(upload_to='attachments/', validators=[FileExtensionValidator(['pdf', 'jpg', 'png', 'doc', 'docx','txt'])])
     mime_type = models.CharField(max_length=100)
     size = models.IntegerField(validators=[MaxValueValidator(10*1024*1024)])  # 10MB
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -18,7 +18,8 @@ class Attachment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        self.mime_type = self.file.content_type
+        # Only set mime_type if available (file being uploaded)
+        self.mime_type = getattr(self.file, 'content_type', self.mime_type)
         self.size = self.file.size
         hasher = hashlib.sha256()
         for chunk in self.file.chunks():

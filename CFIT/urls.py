@@ -13,7 +13,7 @@ router.register('users', UserViewSet, basename='user')
 router.register('issues', IssueViewSet, basename='issue')
 router.register('comments', CommentViewSet, basename='comment')
 router.register('feedback', FeedbackViewSet, basename='feedback')
-router.register('attachments', AttachmentViewSet, basename='attachment')
+router.register(r'attachments', AttachmentViewSet, basename='attachment')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
