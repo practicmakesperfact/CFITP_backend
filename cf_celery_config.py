@@ -1,5 +1,5 @@
 import os
-from celery_config import Celery
+from celery import Celery
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'CFIT.settings')
 app = Celery('CFIT')
