@@ -6,12 +6,14 @@ from apps.users.views import UserViewSet
 from apps.issues.views import IssueViewSet
 from apps.comments.views import CommentViewSet
 from apps.feedback.views import FeedbackViewSet
+from apps.attachments.views import AttachmentViewSet
 
 router = DefaultRouter()
 router.register('users', UserViewSet, basename='user')
 router.register('issues', IssueViewSet, basename='issue')
 router.register('comments', CommentViewSet, basename='comment')
 router.register('feedback', FeedbackViewSet, basename='feedback')
+router.register('attachments', AttachmentViewSet, basename='attachment')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
