@@ -1,21 +1,24 @@
 from django.db import models
 import uuid
 from apps.users.models import User
-from apps.issues.models import Issue
 
-class Notification(models.Model):
+class Report(models.Model):
     TYPE_CHOICES = (
-        ('new_comment', 'New Comment'),
-        ('assignment', 'Assignment'),
-        ('status_change', 'Status Change'),
-        ('mention', 'Mention'),
-        ('feedback_converted', 'Feedback Converted'),
+        ('issues_by_status', 'Issues by Status'),
+        ('issues_by_assignee', 'Issues by Assignee'),
+        ('issues_by_priority', 'Issues by Priority'),
+        ('feedback_summary', 'Feedback Summary'),
+    )
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('generated', 'Generated'),
+        ('failed', 'Failed'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    recipient = models.ForeignKey(User, related_name='report_notifications', on_delete=models.CASCADE)
-    message = models.TextField()
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    issue = models.ForeignKey(Issue, null=True, blank=True, on_delete=models.SET_NULL, related_name='report_issues')
-    is_read = models.BooleanField(default=False)
+    type = models.CharField(max_length=50, choices=TYPE_CHOICES)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    result_path = models.FileField(upload_to='reports/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
