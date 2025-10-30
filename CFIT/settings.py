@@ -1,5 +1,3 @@
-
-
 from pathlib import Path
 from datetime import timedelta
 import os
@@ -161,6 +159,12 @@ CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL','redis://redis:6379/1')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Run Celery tasks synchronously during tests to avoid requiring a broker
+import sys
+if 'test' in sys.argv:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media/'
