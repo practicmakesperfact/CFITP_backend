@@ -150,12 +150,12 @@ SIMPLE_JWT = {
 CACHES = {
     'default': {
         'BACKEND':'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get('REDIS_URL','redis://redis:6379/1'),
+        'LOCATION': os.environ.get('REDIS_URL','redis://localhost:6379/1'),
 }
 }
 
-CELERY_BROKER_URL = os.environ.get('REDIS_URL','redis://redis:6379/1')
-CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL','redis://redis:6379/1')
+CELERY_BROKER_URL = os.environ.get('REDIS_URL','redis://localhost:6379/1')
+CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL','redis://localhost:6379/1')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
