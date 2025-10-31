@@ -40,6 +40,10 @@ def create_users():
 
 # 2. Create Demo Issues
 def create_issues(reporter, assignees):
+    # ensure assignees is a list and pick safely
+    assignees_list = list(assignees) if assignees is not None else []
+    assignee = fake.random_element(assignees_list) if assignees_list else None
+
     issue = Issue.objects.create(
         id=uuid.uuid4(),
         title=fake.sentence(nb_words=6),
@@ -47,7 +51,8 @@ def create_issues(reporter, assignees):
         status='open',
         priority='medium',
         reporter=reporter,
-        assignee=fake.random_element(assignees),
+        assignee=assignee,
+        created_by=reporter,   # <-- set required non-null field
         due_date=fake.date_time_this_month()
     )
     # Log status change
@@ -67,9 +72,10 @@ def create_comments(issue, author):
         id=uuid.uuid4(),
         issue=issue,
         author=author,
-        content=fake.paragraph(nb_sentences=2)
+        content=fake.sentence(nb_words=10),
+        created_at=fake.date_time_this_month()
     )
-    print(f"Added comment by {author.email}")
+    print(f"Created comment by {author.email} on issue {issue.title}")
     return comment
 
 # 4. Create Demo Feedback

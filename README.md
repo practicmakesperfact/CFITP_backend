@@ -73,139 +73,29 @@ python manage.py test
 python seed.py
 
 Final API Endpoints (All Working)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-MethodURLPurposePOST/api/v1/auth/register/RegisterPOST/api/v1/auth/login/LoginPOST/api/v1/auth/logout/LogoutPOST/api/v1/auth/refresh/Refresh tokenGET/api/v1/users/me/ProfileGET/api/v1/issues/List issuesPOST/api/v1/issues/Create issueGET/api/v1/issues/{id}/DetailPATCH/api/v1/issues/{id}/UpdatePOST/api/v1/issues/{id}/assign/AssignPOST/api/v1/issues/{id}/transition/Change statusGET/api/v1/issues/{id}/comments/List commentsPOST/api/v1/issues/{id}/comments/Add commentPATCH/api/v1/comments/{id}/Edit commentDELETE/api/v1/comments/{id}/DeleteGET/api/v1/feedback/ListPOST/api/v1/feedback/SubmitPOST/api/v1/feedback/{id}/convert/ConvertPOST/api/v1/attachments/UploadGET/api/v1/attachments/{id}/download/DownloadGET/api/v1/notifications/ListPOST/api/v1/notifications/{id}/mark-read/Mark readPOST/api/v1/reports/Request reportGET/api/v1/reports/{id}/View report—/api/docs/Swagger UI
+Method,URL,Purpose
+POST,/api/v1/auth/register/,Register
+POST,/api/v1/auth/login/,Login
+POST,/api/v1/auth/logout/,Logout
+POST,/api/v1/auth/refresh/,Refresh token
+GET,/api/v1/users/me/,Profile
+GET,/api/v1/issues/,List issues
+POST,/api/v1/issues/,Create issue
+GET,/api/v1/issues/{id}/,Detail
+PATCH,/api/v1/issues/{id}/,Update
+POST,/api/v1/issues/{id}/assign/,Assign
+POST,/api/v1/issues/{id}/transition/,Change status
+GET,/api/v1/issues/{id}/comments/,List comments
+POST,/api/v1/issues/{id}/comments/,Add comment
+PATCH,/api/v1/comments/{id}/,Edit comment
+DELETE,/api/v1/comments/{id}/,Delete
+GET,/api/v1/feedback/,List
+POST,/api/v1/feedback/,Submit
+POST,/api/v1/feedback/{id}/convert/,Convert
+POST,/api/v1/attachments/,Upload
+GET,/api/v1/attachments/{id}/download/,Download
+GET,/api/v1/notifications/,List
+POST,/api/v1/notifications/{id}/mark-read/,Mark read
+POST,/api/v1/reports/,Request report
+GET,/api/v1/reports/{id}/,View report
+—,/api/docs/,Swagger UI
