@@ -72,10 +72,9 @@ def create_comments(issue, author):
         id=uuid.uuid4(),
         issue=issue,
         author=author,
-        content=fake.sentence(nb_words=10),
-        created_at=fake.date_time_this_month()
+        content=fake.paragraph(nb_sentences=2)
     )
-    print(f"Created comment by {author.email} on issue {issue.title}")
+    print(f"Added comment by {author.email}")
     return comment
 
 # 4. Create Demo Feedback
