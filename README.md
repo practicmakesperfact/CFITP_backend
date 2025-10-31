@@ -72,30 +72,4 @@ python manage.py test
 ```bash
 python seed.py
 
-Final API Endpoints (All Working)
-Method,URL,Purpose
-POST,/api/v1/auth/register/,Register
-POST,/api/v1/auth/login/,Login
-POST,/api/v1/auth/logout/,Logout
-POST,/api/v1/auth/refresh/,Refresh token
-GET,/api/v1/users/me/,Profile
-GET,/api/v1/issues/,List issues
-POST,/api/v1/issues/,Create issue
-GET,/api/v1/issues/{id}/,Detail
-PATCH,/api/v1/issues/{id}/,Update
-POST,/api/v1/issues/{id}/assign/,Assign
-POST,/api/v1/issues/{id}/transition/,Change status
-GET,/api/v1/issues/{id}/comments/,List comments
-POST,/api/v1/issues/{id}/comments/,Add comment
-PATCH,/api/v1/comments/{id}/,Edit comment
-DELETE,/api/v1/comments/{id}/,Delete
-GET,/api/v1/feedback/,List
-POST,/api/v1/feedback/,Submit
-POST,/api/v1/feedback/{id}/convert/,Convert
-POST,/api/v1/attachments/,Upload
-GET,/api/v1/attachments/{id}/download/,Download
-GET,/api/v1/notifications/,List
-POST,/api/v1/notifications/{id}/mark-read/,Mark read
-POST,/api/v1/reports/,Request report
-GET,/api/v1/reports/{id}/,View report
-—,/api/docs/,Swagger UI
+![alt text](image-1.png)
