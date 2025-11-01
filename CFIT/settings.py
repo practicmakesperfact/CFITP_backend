@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from datetime import timedelta
 import os
@@ -146,6 +147,17 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_CONTENT_NEGOTIATION_CLASS': 'rest_framework.negotiation.DefaultContentNegotiation',
 }
+# drf-spectacular settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'CFITP API',
+    'DESCRIPTION': 'Client Feedback & Issue Tracking Portal',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA':True,
+
+    # Enable file upload support
+    'COMPONENT_SPLIT_REQUEST': True,
+    'ENFORCE_REQUEST_BODY_FORMAT': 'multipart/form-data',  # ← Forces form
+}
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -167,7 +179,6 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 # Run Celery tasks synchronously during tests to avoid requiring a broker
-import sys
 if 'test' in sys.argv:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
