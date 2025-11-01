@@ -150,7 +150,7 @@ REST_FRAMEWORK = {
 # drf-spectacular settings
 SPECTACULAR_SETTINGS = {
     'TITLE': 'CFITP API',
-    'DESCRIPTION': 'Client Feedback & Issue Tracking Portal',
+    'DESCRIPTION': 'Client Feedback & Issue Tracking Portal', 
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA':True,
 
