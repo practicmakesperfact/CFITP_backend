@@ -1,26 +1,64 @@
 from rest_framework import serializers
-from .models import User
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 
 class UserSerializer(serializers.ModelSerializer):
+    """
+    General user representation (for lists, etc.)
+    """
     class Meta:
         model = User
         fields = ['id', 'email', 'role', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    """
+    Used for user registration: email + password + role
+    Password is write-only and hashed on save
+    """
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={'input_type': 'password'},
+        help_text="Leave empty to keep current password"
+    )
+
     class Meta:
         model = User
         fields = ['email', 'password', 'role']
-    def create(self, validated_data):
+        extra_kwargs = {
+            'email': {'required': True},
+            'role': {'required': True}
+        }
 
-        user = User.objects.create_user(
-            email = validated_data['email'],
-            password = validated_data['password'],
-            role = validated_data['role']
-        )
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_role(self, value):
+        valid_roles = ['client', 'staff', 'manager', 'admin']
+        if value not in valid_roles:
+            raise serializers.ValidationError(f"Role must be one of: {', '.join(valid_roles)}")
+        return value
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = User(**validated_data)
+        user.set_password(password)  # Hash password
+        user.save()
         return user
+
+
 class ProfileSerializer(serializers.ModelSerializer):
+    """
+    For /me endpoint: show current user profile
+    Includes last_login
+    """
     class Meta:
         model = User
-        fields = ['id','email','role','last_login']
+        fields = ['id', 'email', 'role', 'last_login']
+        read_only_fields = ['id', 'last_login']
