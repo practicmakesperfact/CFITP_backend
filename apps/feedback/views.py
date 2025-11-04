@@ -2,10 +2,12 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+
 from .serializers import FeedbackSerializer
 from .models import Feedback
 from .services import FeedbackService
 from apps.users.permissions import IsStaffOrManager
+
 
 class FeedbackViewSet(viewsets.ModelViewSet):
     queryset = Feedback.objects.all().select_related('user', 'converted_to')
@@ -27,5 +29,20 @@ class FeedbackViewSet(viewsets.ModelViewSet):
     def convert(self, request, pk=None):
         feedback = self.get_object()
         issue_data = request.data
-        issue = FeedbackService.convert_to_issue(feedback, request.user, issue_data)
-        return Response({'issue_id': issue.id}, status=status.HTTP_200_OK)
+
+        try:
+            issue = FeedbackService.convert_to_issue(
+                feedback, request.user, issue_data
+            )
+            return Response({
+                "status": "success",
+                "message": "Feedback converted to issue successfully",
+                "issue_id": issue.id
+            }, status=status.HTTP_201_CREATED)
+
+        except ValueError as e:
+            # Custom friendly error
+            return Response({
+                "status": "failed",
+                "error": "Already converted before"
+            }, status=status.HTTP_200_OK)  
