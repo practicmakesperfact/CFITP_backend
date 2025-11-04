@@ -1,5 +1,5 @@
 from .models import Notification
-from tasks import send_email_notification
+from apps.notifications.tasks import send_email_notification
 
 class NotificationService:
     @staticmethod

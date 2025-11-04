@@ -4,8 +4,8 @@ from apps.feedback.models import Feedback
 import csv
 from io import StringIO
 from django.core.files.base import ContentFile
-from tasks import send_email_notification  
-from CFIT.celery import shared_task
+from apps.notifications.tasks import send_email_notification  
+from celery import shared_task
 
 class ReportService:
     @staticmethod
