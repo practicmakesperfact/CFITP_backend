@@ -154,11 +154,14 @@ SPECTACULAR_SETTINGS = {
     'GROUPING':'tag', 
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA':True,
-
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SCHEMA_PATH_PREFIX': '/api/v1/',
+    'SECURITY': [{'bearerAuth': []}],
     # Enable file upload support
     'COMPONENT_SPLIT_REQUEST': True,
     'ENFORCE_REQUEST_BODY_FORMAT': 'multipart/form-data',  # ← Forces form
 }
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
