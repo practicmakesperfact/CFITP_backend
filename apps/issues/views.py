@@ -8,13 +8,15 @@ from .models import Issue
 from .services import IssueService
 from .permissions import IsStaffOrManager, IsReporter
 from apps.users.permissions import IsAdminOrReadOnly
-from apps.users.models import User  # <-- Add this import
+from apps.users.models import User  
+from apps.issues.filters import IssueFilter
 
 class IssueViewSet(viewsets.ModelViewSet):
     queryset = Issue.objects.all().select_related('reporter', 'assignee').order_by('-created_at')
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
+    filterset_class = IssueFilter
     filterset_fields = ['status', 'priority', 'reporter', 'assignee']
 
     def perform_create(self, serializer):
