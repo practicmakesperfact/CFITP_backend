@@ -1,4 +1,3 @@
-# config/urls.py or CFIT/urls.py
 
 from django.contrib import admin
 from django.urls import path, include
@@ -25,6 +24,7 @@ router.register(r'feedback', FeedbackViewSet, basename='feedback')
 router.register(r'attachments', AttachmentViewSet, basename='attachment')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'reports', ReportViewSet, basename='report')
+router.register(r'comments', CommentViewSet, basename='comment')
 
 # Nested router for comments under issues
 comment_router = DefaultRouter()
