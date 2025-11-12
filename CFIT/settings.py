@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.feedback',
     'celery',
     'django_celery_beat',
+    'django_extensions'
 ]
 
 MIDDLEWARE = [
