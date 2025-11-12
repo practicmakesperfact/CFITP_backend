@@ -73,3 +73,11 @@ python manage.py test
 python seed.py
 
 ![alt text](image-1.png)
+
+## 🧠 Project Diagrams
+
+### Entity Relationship Diagram
+![ER Diagram](docs/diagrams/cfitp_models.png)
+
+### Class Diagram
+![Class Diagram](docs/diagrams/classes_CFITP.png)

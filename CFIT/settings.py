@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'apps.feedback',
     'celery',
     'django_celery_beat',
-    'django_extensions'
+    'django_extensions' # for ER-diagram creations by python manage.py graph_models -a -g -o cfitp_models.png
 ]
 
 MIDDLEWARE = [
