@@ -1,6 +1,8 @@
+
 from .models import Feedback
-from apps.issues.services import IssueService
+from apps.issues.models import Issue
 from apps.notifications.services import NotificationService
+
 
 class FeedbackService:
     @staticmethod
@@ -15,24 +17,28 @@ class FeedbackService:
         if feedback.status == 'converted':
             raise ValueError("Already converted")
 
-        # Use new title/description from request
-        new_title = issue_data.get('title', feedback.title)
-        new_description = issue_data.get('description', feedback.description)
+        # Use new title/description from request or fallback to original
+        new_title = issue_data.get('title', feedback.title) or "Feedback Issue"
+        new_description = issue_data.get('description', feedback.description) or ""
 
-        issue_data['reporter'] = feedback.user or user
-        issue_data['title'] = new_title
-        issue_data['description'] = new_description
+        # CREATE ISSUE DIRECTLY — NO IssueService NEEDED!
+        issue = Issue.objects.create(
+            title=new_title,
+            description=new_description,
+            reporter=feedback.user or user,
+            created_by=user,
+            priority=issue_data.get('priority', 'medium'),
+            type=issue_data.get('type', 'feedback'),
+        )
 
-        issue = IssueService.create_issue(user, issue_data)
-
-        # UPDATE FEEDBACK
+        # Update feedback
         feedback.converted_to = issue
         feedback.status = 'converted'
         feedback.title = new_title
         feedback.description = new_description
         feedback.save()
 
-        # Notify only if user exists
+        # Send notification if user exists
         if feedback.user:
             NotificationService.create_notification(
                 recipient=feedback.user,

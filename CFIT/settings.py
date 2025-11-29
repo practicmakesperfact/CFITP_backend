@@ -16,9 +16,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-p4l6lr@mfu+okbx@_hn^cvjm3+f=6(e8m5lzj&e50a9tht%7da'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True')
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CORS_ALLOW_CREDENTIALS = True
 
 
 # Application definition
@@ -43,12 +49,16 @@ INSTALLED_APPS = [
     'apps.feedback',
     'celery',
     'django_celery_beat',
-    'django_extensions' # for ER-diagram creations by python manage.py graph_models -a -g -o cfitp_models.png
+    'django_extensions', # for ER-diagram creations by python manage.py graph_models -a -g -o cfitp_models.png
+    
+    'corsheaders', 
 ]
 
 MIDDLEWARE = [
+     
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -155,12 +165,12 @@ SPECTACULAR_SETTINGS = {
     'GROUPING':'tag', 
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA':True,
-    'SERVE_INCLUDE_SCHEMA': False,
+   
     'SCHEMA_PATH_PREFIX': '/api/v1/',
     'SECURITY': [{'bearerAuth': []}],
     # Enable file upload support
     'COMPONENT_SPLIT_REQUEST': True,
-    'ENFORCE_REQUEST_BODY_FORMAT': 'multipart/form-data',  # ← Forces form
+    'ENFORCE_REQUEST_BODY_FORMAT': 'multipart/form-data',  
 }
 
 SIMPLE_JWT = {
@@ -205,4 +215,3 @@ DEFAULT_FROM_EMAIL = 'no-replay@exaample.com'
 SECURE_SSL_REDIRECT =not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
-# CORS_ALLOWED_ORIGINS = True

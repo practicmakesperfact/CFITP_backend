@@ -7,6 +7,9 @@ class IssueSerializer(serializers.ModelSerializer):
     assignee = UserSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
 
+    reporter_email = serializers.CharField(source='reporter.email', read_only=True)
+    assignee_email = serializers.CharField(source='assignee.email', read_only=True, allow_null=True)
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
     class Meta:
         model = Issue
         fields = '__all__'
@@ -15,7 +18,8 @@ class IssueSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'reporter',
-            'created_by',  
+            'created_by',  'reporter_email',
+            'assignee_email', 'created_by_email'
         )
 
 
