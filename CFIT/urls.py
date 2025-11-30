@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView,SpectacularRedocView
 
 # Import ViewSets
-from apps.users.views import UserViewSet, UserRegisterView, UserProfileView, UserLogoutView
+from apps.users.views import UserViewSet
 from apps.issues.views import IssueViewSet
 from apps.comments.views import CommentViewSet
 from apps.feedback.views import FeedbackViewSet
@@ -40,11 +40,11 @@ urlpatterns = [
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
     # JWT Auth
-    path('api/v1/auth/register/', UserRegisterView.as_view(), name='auth-register'),
+    # path('api/v1/auth/register/', UserRegisterView.as_view(), name='auth-register'),
     path('api/v1/auth/login/', TokenObtainPairView.as_view(), name='auth-login'),
-    path('api/v1/auth/logout/', UserLogoutView.as_view(), name='auth-logout'),
+    # path('api/v1/auth/logout/', UserLogoutView.as_view(), name='auth-logout'),
     path('api/v1/auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),
-    path('api/v1/users/me/', UserProfileView.as_view(), name='user-profile'),
+    # path('api/v1/users/me/', UserProfileView.as_view(), name='user-profile'),
 
     # Main API
     path('api/v1/', include(router.urls)),
