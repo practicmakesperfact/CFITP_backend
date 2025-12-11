@@ -185,6 +185,14 @@ CELERY_TASK_EAGER_PROPAGATES = True
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media/'
 
+MEDIA_DIRS =[
+    MEDIA_ROOT / 'attachments',
+    MEDIA_ROOT / 'reports',
+    MEDIA_ROOT /'avatars',
+]
+for dir_path in MEDIA_DIRS:
+    dir_path.mkdir(parents=True, exist_ok=True)
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.example.com')
 EMAIL_PORT = os.environ.get('EMAIL_PORT', 587)
