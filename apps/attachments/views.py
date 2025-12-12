@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from django.http import FileResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 import hashlib
+from django.shortcuts import get_object_or_404
 
 from .models import Attachment
 from .serializers import AttachmentSerializer
@@ -16,34 +17,23 @@ class AttachmentViewSet(viewsets.ModelViewSet):
     serializer_class = AttachmentSerializer
     permission_classes = [IsAuthenticated]
 
-    # POST: Upload new file
-    def perform_create(self, serializer):
-        file = self.request.FILES['file']
-        attachment = Attachment(
-            file=file,
-            uploaded_by=self.request.user,
-            mime_type=file.content_type or 'application/octet-stream',
-            size=file.size
-        )
-        hasher = hashlib.sha256()
-        for chunk in file.chunks():
-            hasher.update(chunk)
-        attachment.checksum = hasher.hexdigest()
-        attachment.save()
-        serializer.instance = attachment
+    def get_queryset(self):
+        qs = super().get_queryset()
+        issue_id = self.request.query_params.get('issue')
+        if issue_id:
+            qs = qs.filter(issue_id=issue_id)
+        return qs
 
-    @extend_schema(
-        request={
-            'multipart/form-data': {
-                'type': 'object',
-                'properties': {
-                    'file': {'type': 'string', 'format': 'binary'}
-                },
-                'required': ['file']
-            }
-        },
-        responses={201: AttachmentSerializer}
-    )
+    def perform_create(self, serializer):
+        issue_id = self.request.data.get('issue')
+        comment_id = self.request.data.get('comment')
+        feedback_id = self.request.data.get('feedback')
+        serializer.save(
+            uploaded_by=self.request.user,
+            issue_id=issue_id,
+            comment_id=comment_id,
+            feedback_id=feedback_id,
+        )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
@@ -60,6 +50,12 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         attachment.file = file
         attachment.mime_type = file.content_type or 'application/octet-stream'
         attachment.size = file.size
+
+        # keep associations if present in request
+        attachment.issue_id = self.request.data.get('issue', attachment.issue_id)
+        attachment.comment_id = self.request.data.get('comment', attachment.comment_id)
+        attachment.feedback_id = self.request.data.get('feedback', attachment.feedback_id)
+
         hasher = hashlib.sha256()
         for chunk in file.chunks():
             hasher.update(chunk)
