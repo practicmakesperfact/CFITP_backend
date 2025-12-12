@@ -137,6 +137,12 @@ urlpatterns = [
 
     # Attachment Download
     path('api/v1/attachments/<uuid:pk>/download/', AttachmentViewSet.as_view({'get': 'download'}), name='attachment-download'),
+    # Reports analytics endpoints
+    path('api/v1/reports/analytics/', ReportViewSet.as_view({'get': 'analytics'}), name='report-analytics'),
+    path('api/v1/reports/metrics/', ReportViewSet.as_view({'get': 'metrics'}), name='report-metrics'),
+    path('api/v1/reports/export/', ReportViewSet.as_view({'get': 'export'}), name='report-export'),
+    path('api/v1/reports/<uuid:pk>/status/', ReportViewSet.as_view({'get': 'status'}), name='report-status'),
+    path('api/v1/reports/<uuid:pk>/download/', ReportViewSet.as_view({'get': 'download'}), name='report-download'),
 ]
 
 # Serve media in development
