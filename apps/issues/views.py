@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from .models import Issue
 from .serializers import IssueSerializer
 from .permissions import IsStaffOrManager
+from .services import IssueService
 from apps.users.models import User
 
 
@@ -51,16 +52,31 @@ class IssueViewSet(viewsets.ModelViewSet):
         issue = self.get_object()
         assignee_id = request.data.get('assignee_id')
         assignee = get_object_or_404(User, id=assignee_id)
-        issue.assignee = assignee
-        issue.save()
+        IssueService.assign_issue(issue, assignee, request.user)
         return Response(IssueSerializer(issue).data)
 
     @action(detail=True, methods=['post'])
     def transition(self, request, pk=None):
         issue = self.get_object()
         new_status = request.data.get('new_status')
-        if new_status not in dict(Issue.STATUS_CHOICES):
-            return Response({"detail": "Invalid status"}, status=400)
-        issue.status = new_status
-        issue.save()
-        return Response(IssueSerializer(issue).data)
+        
+        if not new_status:
+            return Response({"detail": "Field 'new_status' is required."}, status=400)
+        
+        # Get valid status values from STATUS_CHOICES
+        valid_statuses = [choice[0] for choice in Issue.STATUS_CHOICES]
+        
+        if new_status not in valid_statuses:
+            return Response({
+                "detail": f"Invalid status: '{new_status}'. Allowed values are: {valid_statuses}",
+                "allowed": valid_statuses
+            }, status=400)
+        
+        # Use service method to handle status transition with history tracking
+        try:
+            IssueService.transition_status(issue, new_status, request.user)
+            return Response(IssueSerializer(issue).data)
+        except Exception as e:
+            return Response({
+                "detail": f"Failed to transition status: {str(e)}"
+            }, status=500)

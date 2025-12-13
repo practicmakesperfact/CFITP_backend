@@ -4,9 +4,9 @@ from apps.users.models import User
 import uuid
 
 class Issue(models.Model):
-    STATUS_CHOICES =(
+    STATUS_CHOICES = (
         ('open','Open'),
-        ('in_progess','In_progress'),
+        ('in_progress','In Progress'),   
         ('resolved','Resolved'),
         ('closed','Closed'),
         ('reopen','Reopen'),

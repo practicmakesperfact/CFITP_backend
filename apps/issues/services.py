@@ -29,10 +29,11 @@ class IssueService:
             issue.status = new_status
             issue.save()
             IssueHistory.objects.create(issue=issue,changed_by=changed_by,old_status=old_status,new_status=new_status)
-            NotificationService.create_notification(
-                recipient=issue.assignee,
-                message = f'Issue {issue.title} Status changed to {new_status}',
-                type = 'status_change',
-                issue = issue
-
-            )
+            # Only notify if there's an assignee
+            if issue.assignee:
+                NotificationService.create_notification(
+                    recipient=issue.assignee,
+                    message = f'Issue {issue.title} Status changed to {new_status}',
+                    type = 'status_change',
+                    issue = issue
+                )
