@@ -1,4 +1,3 @@
-
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,7 +6,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from .models import Issue
 from .serializers import IssueSerializer
-from .permissions import IsStaffOrManager
+from .permissions import IsStaffOrManager, IsReporterOrManagerOrAdmin
 from .services import IssueService
 from apps.users.models import User
 
@@ -24,7 +23,6 @@ class IssueViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def perform_create(self, serializer):
-        # THIS IS ALL YOU NEED — SIMPLE & PERFECT
         serializer.save(
             reporter=self.request.user,
             created_by=self.request.user
@@ -32,11 +30,13 @@ class IssueViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action == 'create':
-            return [IsAuthenticated()]                    # Clients can create
+            return [IsAuthenticated()]
         if self.action in ['list', 'retrieve']:
             return [IsAuthenticated()]
-        if self.action in ['update', 'partial_update', 'destroy', 'assign', 'transition']:
-            return [IsStaffOrManager()]                   # Only staff/manager
+        if self.action in ['update', 'partial_update']:
+            return [IsReporterOrManagerOrAdmin()]  # Custom permission for edits
+        if self.action in ['destroy', 'assign', 'transition']:
+            return [IsStaffOrManager()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -45,7 +45,19 @@ class IssueViewSet(viewsets.ModelViewSet):
             return self.queryset.filter(reporter=user)
         if user.role == 'staff':
             return self.queryset.filter(assignee=user)
-        return self.queryset  # admin/manager see all
+        return self.queryset
+
+    def update(self, request, *args, **kwargs):
+        # Check if issue is in editable status
+        instance = self.get_object()
+        editable_statuses = ['open', 'reopen']
+        
+        if instance.status not in editable_statuses and request.user.role not in ['admin', 'manager']:
+            return Response({
+                "detail": f"Only issues with status 'open' or 'reopen' can be edited. Current status: {instance.status}"
+            }, status=403)
+        
+        return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
@@ -63,7 +75,6 @@ class IssueViewSet(viewsets.ModelViewSet):
         if not new_status:
             return Response({"detail": "Field 'new_status' is required."}, status=400)
         
-        # Get valid status values from STATUS_CHOICES
         valid_statuses = [choice[0] for choice in Issue.STATUS_CHOICES]
         
         if new_status not in valid_statuses:
@@ -72,7 +83,6 @@ class IssueViewSet(viewsets.ModelViewSet):
                 "allowed": valid_statuses
             }, status=400)
         
-        # Use service method to handle status transition with history tracking
         try:
             IssueService.transition_status(issue, new_status, request.user)
             return Response(IssueSerializer(issue).data)
