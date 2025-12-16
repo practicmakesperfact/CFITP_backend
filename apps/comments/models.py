@@ -9,11 +9,7 @@ class Comment(models.Model):
     issue = models.ForeignKey(Issue, related_name='comments', on_delete=models.CASCADE)
     author = models.ForeignKey(User, related_name='comments', on_delete=models.CASCADE, null=True, blank=True)
     content = models.TextField()
-    visibility = models.CharField(
-        max_length=20,
-        choices=[('public', 'Public'), ('internal', 'Internal')],
-        default='public'
-    )
+  
     parent = models.ForeignKey('self', null=True, blank=True, related_name='replies', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
