@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from drf_spectacular.utils import extend_schema
 
@@ -219,6 +220,55 @@ class UserViewSet(viewsets.ModelViewSet):
         else:  # client
             # Clients can only see themselves
             return User.objects.filter(id=user.id)
+        
+    extend_schema(
+    request={
+        'multipart/form-data': {
+            'type': 'object',
+            'properties': {
+                'avatar': {'type': 'string', 'format': 'binary'}
+            }
+        }
+    },
+    responses=ProfileSerializer
+)
+    @action(detail=False, methods=['post'], url_path='me/avatar', 
+            parser_classes=[MultiPartParser, FormParser])
+    def upload_avatar(self, request):
+        """
+        Upload or update user avatar
+        """
+        user = request.user
+        
+        if 'avatar' not in request.FILES:
+            return Response(
+                {"error": "No avatar file provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        avatar_file = request.FILES['avatar']
+        
+        # Validate file size (max 5MB)
+        if avatar_file.size > 5 * 1024 * 1024:
+            return Response(
+                {"error": "Avatar file size must be less than 5MB"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if avatar_file.content_type not in allowed_types:
+            return Response(
+                {"error": "File must be an image (JPEG, PNG, GIF, WebP)"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Save avatar
+        user.avatar = avatar_file
+        user.save()
+        
+        serializer = ProfileSerializer(user)
+        return Response(serializer.data)
 
 
 # ------------------------------------------------------------

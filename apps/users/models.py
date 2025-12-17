@@ -2,6 +2,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import uuid
+from django.conf import settings
 
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, role=None, **extra_fields):
@@ -39,20 +40,26 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=100, blank=True, default='')
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client')
+    avatar = models.ImageField(
+        upload_to='avatars/%Y/%m/%d/',
+        null=True,
+        blank=True,
+        max_length=500
+    )
     
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     
     last_login = models.DateTimeField(null=True, blank=True)
-    date_joined = models.DateTimeField(auto_now_add=True)  # Add this field
+    date_joined = models.DateTimeField(auto_now_add=True) 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = []  # Remove 'role' from here since we have a default
+    REQUIRED_FIELDS = []  
 
     class Meta:
         db_table = 'users'
@@ -82,3 +89,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_client(self):
         return self.role == 'client'
+    @property
+    def avatar_url(self):
+        """Get full URL for avatar"""
+        if self.avatar and hasattr(self.avatar, 'url'):
+            # For local development
+            if settings.DEBUG:
+                return f"http://localhost:8000{self.avatar.url}"
+            return self.avatar.url
+        return None

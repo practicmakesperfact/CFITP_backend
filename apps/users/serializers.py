@@ -153,21 +153,31 @@ class LoginSerializer(TokenObtainPairSerializer):
 # ------------------------------------------------------------
 class ProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'role', 'is_active', 'date_joined', 'last_login',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at', 'avatar_url'
         ]
         read_only_fields = [
             'id', 'email', 'role', 'is_active', 'date_joined', 
-            'last_login', 'created_at', 'updated_at'
-        ]
+            'last_login', 'created_at', 'updated_at', 'avatar_url'
+        ]  # Only these are read-only
     
     def get_full_name(self, obj):
         return obj.get_full_name()
+    
+    def get_avatar_url(self, obj):
+        return obj.avatar_url
+    
+    def update(self, instance, validated_data):
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.save()
+        return instance
 
 
 # ------------------------------------------------------------
