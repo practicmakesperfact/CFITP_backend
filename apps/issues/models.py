@@ -9,7 +9,7 @@ class Issue(models.Model):
         ('in_progress','In Progress'),   
         ('resolved','Resolved'),
         ('closed','Closed'),
-        ('reopen','Reopen'),
+        
     )
     PRIORITY_CHOICES =(
         ('low','Low'),
@@ -32,6 +32,8 @@ class Issue(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+   
+
 class IssueHistory(models.Model):
     id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     issue = models.ForeignKey(Issue,related_name='history',on_delete=models.CASCADE)
@@ -39,3 +41,4 @@ class IssueHistory(models.Model):
     old_status = models.CharField(max_length=50)
     new_status = models.CharField(max_length=50)
     timestamp = models.DateTimeField(auto_now_add=True)
+
