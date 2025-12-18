@@ -14,3 +14,9 @@ class IsStaffOrManager(BasePermission):
 class IsReporter(BasePermission):
     def has_permission(self, request, view,obj):
         return request.user == obj.reporter
+
+class IsManagerOrAdmin(BasePermission):
+    """Allow access only to Manager or Admin users."""
+    
+    def has_permission(self, request, view):
+        return request.user and request.user.role in ['manager', 'admin']
