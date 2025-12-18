@@ -23,11 +23,21 @@ class IssueViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def perform_create(self, serializer):
-        serializer.save(
-            reporter=self.request.user,
-            created_by=self.request.user
-        )
+        """
+        Create issue using IssueService to trigger notifications.
+        """
+        try:
+            issue = IssueService.create_issue(
+                user=self.request.user,
+                data=serializer.validated_data
+            )
+            serializer.instance = issue
+        except Exception as e:
+            # Log error for debugging
+            print(f"Error creating issue: {e}")
+            raise
 
+    
     def get_permissions(self):
         if self.action == 'create':
             return [IsAuthenticated()]

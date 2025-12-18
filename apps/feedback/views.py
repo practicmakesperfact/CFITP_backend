@@ -1,4 +1,4 @@
-
+# apps/feedback/views.py
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -18,7 +18,7 @@ class FeedbackPagination(PageNumberPagination):
     max_page_size = 100
 
 class FeedbackViewSet(viewsets.ModelViewSet):
-    queryset = Feedback.objects.all().select_related('user', 'converted_toue')
+    queryset = Feedback.objects.all().select_related('user', 'converted_to')  
     serializer_class = FeedbackSerializer
     pagination_class = FeedbackPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -29,13 +29,10 @@ class FeedbackViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'list', 'retrieve']:
-            # Allow anyone to create feedback, list/view own feedback
             return [AllowAny()]
         elif self.action == 'convert':
-            # Only staff/manager can convert feedback to issue
             return [IsStaffOrManager()]
         elif self.action in ['update', 'partial_update', 'destroy']:
-            # Only managers/admins can modify/delete feedback
             return [IsManagerOrAdmin()]
         return [IsAuthenticated()]
 
@@ -45,20 +42,19 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         if not user.is_authenticated:
-            # Return empty for anonymous users (they can only create)
             return queryset.none()
         
         if user.role in ['client']:
-            # Clients can only see their own feedback
             return queryset.filter(user=user)
         
-        # Staff/Manager/Admin can see all feedback
         return queryset
 
     def perform_create(self, serializer):
         """Create feedback with proper user assignment"""
         user = self.request.user if self.request.user.is_authenticated else None
-        serializer.save()
+        # USE FeedbackService to trigger notifications
+        feedback = FeedbackService.create_feedback(user, serializer.validated_data)
+        serializer.instance = feedback  
 
     @action(detail=False, methods=['get'])
     def my(self, request):
@@ -84,7 +80,6 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         """Convert feedback to issue"""
         feedback = self.get_object()
         
-        # Check if already converted
         if feedback.status == 'converted':
             return Response({
                 "status": "error",
@@ -93,14 +88,12 @@ class FeedbackViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Use FeedbackService to convert
             issue = FeedbackService.convert_to_issue(
                 feedback, 
                 request.user, 
                 request.data
             )
             
-            # Return the created issue
             issue_serializer = IssueSerializer(issue)
             return Response({
                 "status": "success",
@@ -125,10 +118,11 @@ class FeedbackViewSet(viewsets.ModelViewSet):
                 "message": f"Feedback is already {feedback.get_status_display()}"
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        feedback.status = 'acknowledged'
-        feedback.save()
+        # Use FeedbackService for acknowledgment notifications
+        feedback = FeedbackService.acknowledge_feedback(feedback, request.user)
         
         return Response({
             "status": "success",
-            "message": "Feedback acknowledged"
+            "message": "Feedback acknowledged",
+            "feedback": FeedbackSerializer(feedback).data
         })

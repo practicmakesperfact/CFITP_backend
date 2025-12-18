@@ -5,13 +5,14 @@ from apps.issues.models import Issue
 
 class Notification(models.Model):
     TYPE_CHOICES = (
-        ('new_feedback', 'New Feedback'),  
-        ('new_comment', 'New Comment'),
-        ('assignment', 'Assignment'),
-        ('status_change', 'Status Change'),
-        ('mention', 'Mention'),
-        ('feedback_converted', 'Feedback Converted'),
-    )
+            ('new_feedback', 'New Feedback'),  
+            ('new_issue', 'New Issue'),  
+            ('new_comment', 'New Comment'),
+            ('assignment', 'Assignment'),
+            ('status_change', 'Status Change'),
+            ('mention', 'Mention'),
+            ('feedback_converted', 'Feedback Converted'),
+        )
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)

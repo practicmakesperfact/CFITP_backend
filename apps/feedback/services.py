@@ -34,7 +34,7 @@ class FeedbackService:
     @staticmethod
     def convert_to_issue(feedback, user, issue_data):
         """Convert feedback to an issue"""
-        if feedback.converted_to_issue:
+        if feedback.converted_to:
             raise ValueError("Feedback already converted to issue")
         
         # Create issue from feedback
@@ -49,7 +49,7 @@ class FeedbackService:
         
         # Update feedback status and link to issue
         feedback.status = 'converted'
-        feedback.converted_to_issue = issue
+        feedback.converted_to = issue
         feedback.save()
         
         # 1. Send notification to feedback submitter
