@@ -2,11 +2,12 @@
 from rest_framework import serializers
 from .models import Feedback
 from apps.users.serializers import UserSerializer
+from apps.issues.serializers import IssueSerializer
 
 class FeedbackSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     user_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
-    
+    converted_to = IssueSerializer(read_only=True)
     class Meta:
         model = Feedback
         fields = [

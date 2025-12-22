@@ -47,6 +47,7 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         if user.role in ['client']:
             return queryset.filter(user=user)
         
+        # Admin, manager, staff can see all feedback
         return queryset
 
     def perform_create(self, serializer):

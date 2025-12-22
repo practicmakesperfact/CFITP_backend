@@ -82,17 +82,19 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, Sp
 
 # Import ViewSets
 from apps.users.views import UserViewSet, CustomLoginView, LogoutView
-from apps.issues.views import IssueViewSet
+from apps.issues.views import IssueHistoryViewSet, IssueViewSet
 from apps.comments.views import CommentViewSet
 from apps.feedback.views import FeedbackViewSet
 from apps.attachments.views import AttachmentViewSet
 from apps.notifications.views import NotificationViewSet
 from apps.reports.views import ReportViewSet
+from apps.issues.views import IssueHistoryViewSet
 
 # Router
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'issues', IssueViewSet, basename='issue')
+router.register(r'issue-history', IssueHistoryViewSet, basename='issue-history')
 router.register(r'feedback', FeedbackViewSet, basename='feedback')
 router.register(r'attachments', AttachmentViewSet, basename='attachment')
 router.register(r'notifications', NotificationViewSet, basename='notification')
@@ -143,6 +145,9 @@ urlpatterns = [
     path('api/v1/reports/export/', ReportViewSet.as_view({'get': 'export'}), name='report-export'),
     path('api/v1/reports/<uuid:pk>/status/', ReportViewSet.as_view({'get': 'status'}), name='report-status'),
     path('api/v1/reports/<uuid:pk>/download/', ReportViewSet.as_view({'get': 'download'}), name='report-download'),
+
+
+    path('api/v1/users/admin/', UserViewSet.as_view({'get': 'admin_users_list'}), name='admin-users-list'),
 ]
 
 # Serve media in development

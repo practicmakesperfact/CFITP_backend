@@ -1,4 +1,4 @@
-
+# apps/users/serializers.py - UPDATED VERSION
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -144,12 +144,13 @@ class LoginSerializer(TokenObtainPairSerializer):
             "role": self.user.role,
             "is_active": self.user.is_active,
             "last_login": self.user.last_login,
+            "date_joined": self.user.date_joined,
         }
         return data
 
 
 # ------------------------------------------------------------
-# PROFILE SERIALIZER
+# PROFILE SERIALIZER (For detailed user view)
 # ------------------------------------------------------------
 class ProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
@@ -165,7 +166,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'email', 'role', 'is_active', 'date_joined', 
             'last_login', 'created_at', 'updated_at', 'avatar_url'
-        ]  # Only these are read-only
+        ]
     
     def get_full_name(self, obj):
         return obj.get_full_name()
@@ -181,17 +182,75 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 # ------------------------------------------------------------
-# USER SERIALIZER (Simplified to match your existing structure)
+# USER LIST SERIALIZER (For listing users with all needed fields)
+# ------------------------------------------------------------
+class UserListSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'full_name',
+            'role', 'is_active', 'date_joined', 'last_login',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = fields  # All fields are read-only for list view
+    
+    def get_full_name(self, obj):
+        return obj.get_full_name()
+
+
+# ------------------------------------------------------------
+# USER DETAIL SERIALIZER (For single user retrieval)
+# ------------------------------------------------------------
+class UserDetailSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'full_name',
+            'role', 'is_active', 'date_joined', 'last_login',
+            'created_at', 'updated_at', 'avatar_url'
+        ]
+    
+    def get_full_name(self, obj):
+        return obj.get_full_name()
+    
+    def get_avatar_url(self, obj):
+        return obj.avatar_url
+
+
+# ------------------------------------------------------------
+# USER UPDATE SERIALIZER (For updating users)
+# ------------------------------------------------------------
+class UserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'role', 'is_active']
+        
+    def validate_role(self, value):
+        valid_roles = ['client', 'staff', 'manager', 'admin']
+        if value not in valid_roles:
+            raise serializers.ValidationError(
+                f"Role must be one of: {', '.join(valid_roles)}"
+            )
+        return value
+
+
+# ------------------------------------------------------------
+# USER BASIC SERIALIZER (Minimal fields - keep for backward compatibility)
 # ------------------------------------------------------------
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'role', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_active', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'email', 'date_joined', 'last_login']
 
 
 # ------------------------------------------------------------
-# PASSWORD CHANGE SERIALIZER (FIXED)
+# PASSWORD CHANGE SERIALIZER
 # ------------------------------------------------------------
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True, write_only=True)

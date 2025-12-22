@@ -1,4 +1,4 @@
-
+# apps/users/views.py - UPDATED VERSION
 from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status, viewsets, filters
 from rest_framework.decorators import action
@@ -14,6 +14,9 @@ from .serializers import (
     RegisterSerializer,
     ProfileSerializer,
     UserSerializer,
+    UserListSerializer,      # ADD THIS
+    UserDetailSerializer,    # ADD THIS
+    UserUpdateSerializer,    # ADD THIS
     LoginSerializer,
     ChangePasswordSerializer
 )
@@ -32,17 +35,29 @@ class CustomLoginView(TokenObtainPairView):
 
 
 # ------------------------------------------------------------
-# USER VIEWSET (Updated to integrate with your existing structure)
+# USER VIEWSET (UPDATED for better serialization)
 # ------------------------------------------------------------
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     
     def get_serializer_class(self):
-        if self.action == 'register':
+        """
+        Use different serializers based on action
+        """
+        if self.action == 'list':
+            return UserListSerializer  # Full details for listing
+        elif self.action == 'retrieve':
+            return UserDetailSerializer  # Full details for single user
+        elif self.action in ['update', 'partial_update']:
+            return UserUpdateSerializer  # For updating users
+        elif self.action == 'create':
+            return RegisterSerializer  # For creating new users
+        elif self.action == 'register':
             return RegisterSerializer
         elif self.action in ['profile', 'me']:
             return ProfileSerializer
-        return UserSerializer
+        else:
+            return UserSerializer
 
     def get_permissions(self):
         """
@@ -50,10 +65,14 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         if self.action in ['register', 'login']:
             return [AllowAny()]
-        elif self.action in ['list', 'retrieve']:
+        elif self.action == 'list':
+            # Only admin can list all users
+            return [IsAuthenticated()]  # Will be filtered by get_queryset
+        elif self.action in ['retrieve', 'profile', 'me', 'change_password', 'upload_avatar']:
             return [IsAuthenticated()]
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsAuthenticated()]
+        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
+            # Only admin can create/update/delete users (except self-profile updates)
+            return [IsAdminUser()]
         else:
             return [IsAuthenticated()]
 
@@ -84,13 +103,8 @@ class UserViewSet(viewsets.ModelViewSet):
             user = serializer.save()
             print(f"User created successfully: {user.email} (ID: {user.id})")
             
-            # Generate tokens for auto-login
-            # refresh = RefreshToken.for_user(user)
-            
             response_data = {
                 'user': ProfileSerializer(user).data,
-                # 'refresh': str(refresh),
-                # 'access': str(refresh.access_token),
                 'message': 'Registration successful! Please login.'
             }
             
@@ -103,6 +117,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 {"detail": "An error occurred during registration. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
     @extend_schema(
         responses=ProfileSerializer,
         description="Get or update user profile"
@@ -161,7 +176,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
-        responses=UserSerializer(many=True),
+        responses=UserListSerializer(many=True),  # CHANGED THIS
         description="Get all staff users"
     )
     @action(detail=False, methods=['get'], url_path='staff')
@@ -177,11 +192,11 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         
         staff_users = User.objects.filter(role='staff', is_active=True)
-        serializer = self.get_serializer(staff_users, many=True)
+        serializer = UserListSerializer(staff_users, many=True)  # CHANGED THIS
         return Response(serializer.data)
 
     @extend_schema(
-        responses=UserSerializer(many=True),
+        responses=UserListSerializer(many=True),  # CHANGED THIS
         description="Get all client users"
     )
     @action(detail=False, methods=['get'], url_path='clients')
@@ -197,7 +212,7 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         
         client_users = User.objects.filter(role='client', is_active=True)
-        serializer = self.get_serializer(client_users, many=True)
+        serializer = UserListSerializer(client_users, many=True)  # CHANGED THIS
         return Response(serializer.data)
 
     def get_queryset(self):
@@ -210,28 +225,28 @@ class UserViewSet(viewsets.ModelViewSet):
             return User.objects.none()
         
         if user.role == 'admin':
-            return User.objects.all()
+            return User.objects.all().order_by('-date_joined')  # ADDED ORDERING
         elif user.role == 'manager':
             # Managers can see everyone except admins
-            return User.objects.exclude(role='admin')
+            return User.objects.exclude(role='admin').order_by('-date_joined')
         elif user.role == 'staff':
             # Staff can see clients and other staff
-            return User.objects.filter(role__in=['client', 'staff'])
+            return User.objects.filter(role__in=['client', 'staff']).order_by('-date_joined')
         else:  # client
             # Clients can only see themselves
             return User.objects.filter(id=user.id)
-        
-    extend_schema(
-    request={
-        'multipart/form-data': {
-            'type': 'object',
-            'properties': {
-                'avatar': {'type': 'string', 'format': 'binary'}
+
+    @extend_schema(
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'avatar': {'type': 'string', 'format': 'binary'}
+                }
             }
-        }
-    },
-    responses=ProfileSerializer
-)
+        },
+        responses=ProfileSerializer
+    )
     @action(detail=False, methods=['post'], url_path='me/avatar', 
             parser_classes=[MultiPartParser, FormParser])
     def upload_avatar(self, request):
@@ -268,6 +283,120 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save()
         
         serializer = ProfileSerializer(user)
+        return Response(serializer.data)
+
+    @extend_schema(
+        responses=UserListSerializer(many=True),
+        description="Admin-only endpoint to get all users with full details"
+    )
+    @action(detail=False, methods=['get'], url_path='admin/users', permission_classes=[IsAdminUser])
+    def admin_users_list(self, request):
+        """
+        Admin-only endpoint to get all users with full details
+        """
+        users = User.objects.all().order_by('-date_joined')
+        serializer = UserListSerializer(users, many=True)  # CHANGED TO UserListSerializer
+        return Response(serializer.data)
+    
+    @extend_schema(
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'user_ids': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of user IDs to update'
+                    },
+                    'action': {
+                        'type': 'string',
+                        'enum': ['activate', 'deactivate', 'delete'],
+                        'description': 'Action to perform'
+                    }
+                },
+                'required': ['user_ids', 'action']
+            }
+        },
+        responses={200: {"detail": "Bulk operation completed"}}
+    )
+    @action(detail=False, methods=['post'], url_path='admin/users/bulk', permission_classes=[IsAdminUser])
+    def admin_users_bulk(self, request):
+        """
+        Admin bulk operations
+        """
+        user_ids = request.data.get('user_ids', [])
+        action = request.data.get('action')
+        
+        if not user_ids:
+            return Response(
+                {"error": "No user IDs provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if action not in ['activate', 'deactivate', 'delete']:
+            return Response(
+                {"error": "Invalid action. Must be 'activate', 'deactivate', or 'delete'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            users = User.objects.filter(id__in=user_ids)
+            
+            if action == 'activate':
+                users.update(is_active=True)
+                message = f"Activated {users.count()} users"
+            elif action == 'deactivate':
+                users.update(is_active=False)
+                message = f"Deactivated {users.count()} users"
+            elif action == 'delete':
+                count = users.count()
+                users.delete()
+                message = f"Deleted {count} users"
+            
+            return Response({"detail": message})
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error performing bulk operation: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # Override update method to use UserUpdateSerializer
+    def update(self, request, *args, **kwargs):
+        """
+        Update user information
+        """
+        user = self.get_object()
+        
+        # Regular users can only update their own profile through 'me' endpoint
+        if request.user != user and request.user.role != 'admin':
+            return Response(
+                {"detail": "You don't have permission to update this user."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = UserUpdateSerializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Return full user details
+        return Response(UserDetailSerializer(user).data)
+
+    # Override retrieve to use UserDetailSerializer
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Get user details
+        """
+        user = self.get_object()
+        
+        # Check permissions
+        if request.user.role == 'client' and request.user != user:
+            return Response(
+                {"detail": "You don't have permission to view this user."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = UserDetailSerializer(user)
         return Response(serializer.data)
 
 

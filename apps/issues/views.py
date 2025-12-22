@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import viewsets,filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +9,11 @@ from .serializers import IssueSerializer
 from .permissions import IsStaffOrManager, IsReporterOrManagerOrAdmin
 from .services import IssueService
 from apps.users.models import User
+from apps.issues.models import IssueHistory
+from apps.issues.serializers import IssueHistorySerializer
+from django_filters.rest_framework import DjangoFilterBackend
+
+
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -100,3 +105,53 @@ class IssueViewSet(viewsets.ModelViewSet):
             return Response({
                 "detail": f"Failed to transition status: {str(e)}"
             }, status=500)
+class IssueHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint for viewing issue history.
+    Read-only - history should only be created automatically.
+    """
+    queryset = IssueHistory.objects.all().select_related(
+        'issue', 
+        'changed_by'
+    ).order_by('-timestamp')
+    
+    serializer_class = IssueHistorySerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['new_status', 'changed_by']
+    search_fields = ['issue__title', 'changed_by__email']
+    ordering_fields = ['timestamp', 'issue__title']
+    ordering = ['-timestamp']
+
+    def get_queryset(self):
+        """Filter based on user role"""
+        queryset = super().get_queryset()
+        user = self.request.user
+        
+        if user.role == 'client':
+            # Clients can only see history of their own issues
+            return queryset.filter(issue__reporter=user)
+        elif user.role == 'staff':
+            # Staff can see issues assigned to them
+            return queryset.filter(issue__assignee=user)
+        # Admin and manager can see all
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def recent(self, request):
+        """Get recent history (last 7 days)"""
+        from datetime import datetime, timedelta
+        last_week = datetime.now() - timedelta(days=7)
+        
+        recent_history = self.get_queryset().filter(
+            timestamp__gte=last_week
+        ).order_by('-timestamp')[:100]
+        
+        page = self.paginate_queryset(recent_history)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(recent_history, many=True)
+        return Response(serializer.data)
