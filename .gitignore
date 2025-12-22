@@ -1,1 +1,6 @@
 .env
+venv_ubuntu/
+__pycache__/
+*.pyc
+dump.rdb
+media/
