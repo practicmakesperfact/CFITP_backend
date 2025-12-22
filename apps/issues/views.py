@@ -113,6 +113,9 @@ class IssueHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = IssueHistory.objects.all().select_related(
         'issue', 
         'changed_by'
+    ).prefetch_related(  
+        'issue__reporter',
+        'issue__assignee'
     ).order_by('-timestamp')
     
     serializer_class = IssueHistorySerializer

@@ -24,6 +24,9 @@ class IssueSerializer(serializers.ModelSerializer):
 
 
 class IssueHistorySerializer(serializers.ModelSerializer):
+    issue = IssueSerializer(read_only=True)
+    changed_by = UserSerializer(read_only=True)
+
     class Meta:
         model = IssueHistory
         fields = '__all__'
