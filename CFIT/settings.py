@@ -11,9 +11,9 @@ SECRET_KEY = 'django-insecure-p4l6lr@mfu+okbx@_hn^cvjm3+f=6(e8m5lzj&e50a9tht%7da
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 # Security settings
-SECURE_SSL_REDIRECT = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = False
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
 SECURE_CONTENT_TYPE_NOSNIFF = True

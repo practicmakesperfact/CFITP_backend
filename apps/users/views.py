@@ -176,27 +176,52 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
-        responses=UserListSerializer(many=True),  # CHANGED THIS
-        description="Get all staff users"
+    responses=UserListSerializer(many=True),
+    description="Get all staff users (role='staff' only)"
     )
     @action(detail=False, methods=['get'], url_path='staff')
     def staff_users(self, request):
         """
-        Get all staff users
+        Get ONLY staff users (role='staff'), EXCLUDE managers and admins
         """
-        # Only allow staff, managers, and admins to view staff list
-        if request.user.role not in ['staff', 'manager', 'admin']:
+        # Only allow managers and admins to view staff list
+        if request.user.role not in ['manager', 'admin']:
             return Response(
                 {"detail": "You don't have permission to view staff users."},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        staff_users = User.objects.filter(role='staff', is_active=True)
-        serializer = UserListSerializer(staff_users, many=True)  # CHANGED THIS
-        return Response(serializer.data)
-
+        # FIXED: Only get users with role='staff' (not 'manager')
+        staff_users = User.objects.filter(
+            role='staff',  # CRITICAL: This MUST be 'staff'
+            is_active=True
+        ).order_by('first_name')
+        
+        # ========== DEBUG CODE ==========
+        print("=" * 50)
+        print("DEBUG: /users/staff/ endpoint called")
+        print(f"Query SQL: {staff_users.query}")
+        print(f"Number of users found: {staff_users.count()}")
+        
+        # Check what users were found
+        found_users = list(staff_users)
+        print(f"Found users: {[user.email for user in found_users]}")
+        
+        # Double-check each user's role
+        for user in found_users:
+            print(f"  - {user.email}: role='{user.role}'")
+        print("=" * 50)
+        # ========== END DEBUG ==========
+        
+        serializer = UserListSerializer(staff_users, many=True)
+        
+        # Debug the serialized data too
+        serialized_data = serializer.data
+        print(f"Serialized data being returned: {serialized_data}")
+        
+        return Response(serialized_data)
     @extend_schema(
-        responses=UserListSerializer(many=True),  # CHANGED THIS
+        responses=UserListSerializer(many=True),  
         description="Get all client users"
     )
     @action(detail=False, methods=['get'], url_path='clients')

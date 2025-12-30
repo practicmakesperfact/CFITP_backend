@@ -1,4 +1,3 @@
-
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import uuid
@@ -10,7 +9,6 @@ class UserManager(BaseUserManager):
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
         
-        # Set default role if not provided
         if role is None:
             role = 'client'
             
@@ -35,7 +33,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     
-    # Add the missing fields from your serializer
     first_name = models.CharField(max_length=100, blank=True, default='')
     last_name = models.CharField(max_length=100, blank=True, default='')
     
@@ -47,10 +44,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         max_length=500
     )
     
+    # STATUS FIELDS (NO EMAIL VERIFICATION)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     
+    # TIMESTAMPS
     last_login = models.DateTimeField(null=True, blank=True)
     date_joined = models.DateTimeField(auto_now_add=True) 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -89,11 +88,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_client(self):
         return self.role == 'client'
+    
     @property
     def avatar_url(self):
-        """Get full URL for avatar"""
         if self.avatar and hasattr(self.avatar, 'url'):
-            # For local development
             if settings.DEBUG:
                 return f"http://localhost:8000{self.avatar.url}"
             return self.avatar.url
