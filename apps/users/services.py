@@ -6,7 +6,7 @@ class UserService:
         return request.user
     
     @staticmethod
-    def update_profile(user,data):
-        user.email = data.get('email',user.email)
+    def update_profile(user, data):
+        user.email = data.get('email', user.email)
         user.save()
         return user

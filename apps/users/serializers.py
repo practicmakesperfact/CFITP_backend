@@ -1,4 +1,3 @@
-# apps/users/serializers.py - UPDATED VERSION
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -8,7 +7,7 @@ User = get_user_model()
 
 
 # ------------------------------------------------------------
-# REGISTRATION SERIALIZER (FIXED)
+# REGISTRATION SERIALIZER (UPDATED FOR ADMIN SUPPORT)
 # ------------------------------------------------------------
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -24,6 +23,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     )
     first_name = serializers.CharField(required=True, max_length=100)
     last_name = serializers.CharField(required=True, max_length=100)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Get the request from context
+        self.request = self.context.get('request', None)
 
     class Meta:
         model = User
@@ -46,12 +50,29 @@ class RegisterSerializer(serializers.ModelSerializer):
                 f"Role must be one of: {', '.join(valid_roles)}"
             )
         
-        # Restrict self-registration to client role only
+        # Get request context
+        request = self.context.get('request')
+        
+        # If request exists and user is admin, allow any role
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            if request.user.role == 'admin':
+                return value
+            elif request.user.role == 'manager' and value != 'admin':
+                # Managers can create staff and clients, but not admins
+                return value
+        
+        # For public registration or non-admin users, restrict to client only
         if value != 'client':
-            raise serializers.ValidationError(
-                "Only client accounts can be self-registered. "
-                "Staff, Manager, and Admin roles require administrator approval."
-            )
+            if not request or not request.user.is_authenticated:
+                raise serializers.ValidationError(
+                    "Only client accounts can be self-registered. "
+                    "Staff, Manager, and Admin roles require administrator approval."
+                )
+            else:
+                raise serializers.ValidationError(
+                    "You don't have permission to create staff, manager, or admin accounts. "
+                    "Only administrators can create these roles."
+                )
         
         return value
 
@@ -236,6 +257,24 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"Role must be one of: {', '.join(valid_roles)}"
             )
+        
+        # Get request context
+        request = self.context.get('request')
+        
+        # Only admins can assign admin role
+        if value == 'admin' and request and request.user.is_authenticated:
+            if request.user.role != 'admin':
+                raise serializers.ValidationError(
+                    "Only administrators can assign admin role."
+                )
+        
+        # Managers can assign staff and client roles only
+        if request and request.user.is_authenticated and request.user.role == 'manager':
+            if value == 'admin':
+                raise serializers.ValidationError(
+                    "Managers cannot assign admin role."
+                )
+        
         return value
 
 
@@ -268,3 +307,49 @@ class ChangePasswordSerializer(serializers.Serializer):
                 "confirm_password": "Password fields didn't match."
             })
         return attrs
+
+
+# ------------------------------------------------------------
+# ADMIN CREATE SERIALIZER (For admin-only user creation)
+# ------------------------------------------------------------
+class AdminCreateUserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        min_length=8,
+        style={'input_type': 'password'}
+    )
+    confirm_password = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={'input_type': 'password'}
+    )
+    
+    class Meta:
+        model = User
+        fields = ['email', 'password', 'confirm_password', 'first_name', 'last_name', 'role', 'is_active']
+    
+    def validate(self, attrs):
+        # Password confirmation
+        if attrs['password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({
+                "confirm_password": "Password fields didn't match."
+            })
+        
+        # Email validation
+        if User.objects.filter(email__iexact=attrs['email']).exists():
+            raise serializers.ValidationError({
+                "email": "A user with this email already exists."
+            })
+        
+        return attrs
+    
+    def create(self, validated_data):
+        validated_data.pop('confirm_password')
+        password = validated_data.pop('password')
+        
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
+        
+        return user

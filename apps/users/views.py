@@ -1,4 +1,3 @@
-# apps/users/views.py - UPDATED VERSION
 from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status, viewsets, filters
 from rest_framework.decorators import action
@@ -14,11 +13,12 @@ from .serializers import (
     RegisterSerializer,
     ProfileSerializer,
     UserSerializer,
-    UserListSerializer,      # ADD THIS
-    UserDetailSerializer,    # ADD THIS
-    UserUpdateSerializer,    # ADD THIS
+    UserListSerializer,
+    UserDetailSerializer,
+    UserUpdateSerializer,
     LoginSerializer,
-    ChangePasswordSerializer
+    ChangePasswordSerializer,
+    AdminCreateUserSerializer  # Add this import
 )
 
 User = get_user_model()
@@ -35,7 +35,7 @@ class CustomLoginView(TokenObtainPairView):
 
 
 # ------------------------------------------------------------
-# USER VIEWSET (UPDATED for better serialization)
+# USER VIEWSET (UPDATED FOR ADMIN CREATE FUNCTIONALITY)
 # ------------------------------------------------------------
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -45,19 +45,29 @@ class UserViewSet(viewsets.ModelViewSet):
         Use different serializers based on action
         """
         if self.action == 'list':
-            return UserListSerializer  # Full details for listing
+            return UserListSerializer
         elif self.action == 'retrieve':
-            return UserDetailSerializer  # Full details for single user
+            return UserDetailSerializer
         elif self.action in ['update', 'partial_update']:
-            return UserUpdateSerializer  # For updating users
+            return UserUpdateSerializer
         elif self.action == 'create':
-            return RegisterSerializer  # For creating new users
+            return RegisterSerializer
+        elif self.action == 'admin_create':
+            return AdminCreateUserSerializer
         elif self.action == 'register':
             return RegisterSerializer
         elif self.action in ['profile', 'me']:
             return ProfileSerializer
         else:
             return UserSerializer
+    
+    def get_serializer_context(self):
+        """
+        Add request to serializer context
+        """
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
 
     def get_permissions(self):
         """
@@ -65,9 +75,10 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         if self.action in ['register', 'login']:
             return [AllowAny()]
+        elif self.action == 'admin_create':
+            return [IsAdminUser()]
         elif self.action == 'list':
-            # Only admin can list all users
-            return [IsAuthenticated()]  # Will be filtered by get_queryset
+            return [IsAuthenticated()]
         elif self.action in ['retrieve', 'profile', 'me', 'change_password', 'upload_avatar']:
             return [IsAuthenticated()]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -79,21 +90,22 @@ class UserViewSet(viewsets.ModelViewSet):
     @extend_schema(
         request=RegisterSerializer,
         responses={201: ProfileSerializer},
-        description="Register a new user (client role only)"
+        description="Register a new user (client role only for public, any role for admin)"
     )
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register(self, request):
         """
-        Public endpoint for client registration only
+        Public endpoint for registration. Admin users can create any role.
         """
         import json
         print("=" * 50)
         print("REGISTRATION REQUEST RECEIVED")
         print("=" * 50)
         print("Request data:", json.dumps(request.data, indent=2))
-        print("Headers:", dict(request.headers))
+        print("User making request:", request.user.email if request.user.is_authenticated else "Anonymous")
         
-        serializer = RegisterSerializer(data=request.data)
+        # Pass request context to serializer
+        serializer = RegisterSerializer(data=request.data, context={'request': request})
         
         if not serializer.is_valid():
             print("VALIDATION ERRORS:", json.dumps(serializer.errors, indent=2))
@@ -101,11 +113,11 @@ class UserViewSet(viewsets.ModelViewSet):
         
         try:
             user = serializer.save()
-            print(f"User created successfully: {user.email} (ID: {user.id})")
+            print(f"User created successfully: {user.email} (ID: {user.id}, Role: {user.role})")
             
             response_data = {
                 'user': ProfileSerializer(user).data,
-                'message': 'Registration successful! Please login.'
+                'message': 'Registration successful!'
             }
             
             print("Registration successful, returning response")
@@ -114,7 +126,46 @@ class UserViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Error creating user: {str(e)}")
             return Response(
-                {"detail": "An error occurred during registration. Please try again."},
+                {"detail": f"An error occurred during registration: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @extend_schema(
+        request=AdminCreateUserSerializer,
+        responses={201: UserDetailSerializer},
+        description="Admin-only endpoint to create users with any role"
+    )
+    @action(detail=False, methods=['post'], url_path='admin/create', permission_classes=[IsAdminUser])
+    def admin_create(self, request):
+        """
+        Admin-only endpoint to create users with any role
+        """
+        import json
+        print("=" * 50)
+        print("ADMIN CREATE USER REQUEST")
+        print("=" * 50)
+        print("Admin user:", request.user.email)
+        print("Request data:", json.dumps(request.data, indent=2))
+        
+        serializer = AdminCreateUserSerializer(data=request.data, context={'request': request})
+        
+        if not serializer.is_valid():
+            print("VALIDATION ERRORS:", json.dumps(serializer.errors, indent=2))
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = serializer.save()
+            print(f"User created by admin: {user.email} (ID: {user.id}, Role: {user.role})")
+            
+            return Response(
+                UserDetailSerializer(user).data,
+                status=status.HTTP_201_CREATED
+            )
+            
+        except Exception as e:
+            print(f"Error creating user as admin: {str(e)}")
+            return Response(
+                {"detail": f"An error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -176,8 +227,8 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
-    responses=UserListSerializer(many=True),
-    description="Get all staff users (role='staff' only)"
+        responses=UserListSerializer(many=True),
+        description="Get all staff users (role='staff' only)"
     )
     @action(detail=False, methods=['get'], url_path='staff')
     def staff_users(self, request):
@@ -193,11 +244,10 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # FIXED: Only get users with role='staff' (not 'manager')
         staff_users = User.objects.filter(
-            role='staff',  # CRITICAL: This MUST be 'staff'
+            role='staff',
             is_active=True
         ).order_by('first_name')
         
-        # ========== DEBUG CODE ==========
         print("=" * 50)
         print("DEBUG: /users/staff/ endpoint called")
         print(f"Query SQL: {staff_users.query}")
@@ -211,7 +261,6 @@ class UserViewSet(viewsets.ModelViewSet):
         for user in found_users:
             print(f"  - {user.email}: role='{user.role}'")
         print("=" * 50)
-        # ========== END DEBUG ==========
         
         serializer = UserListSerializer(staff_users, many=True)
         
@@ -220,6 +269,7 @@ class UserViewSet(viewsets.ModelViewSet):
         print(f"Serialized data being returned: {serialized_data}")
         
         return Response(serialized_data)
+
     @extend_schema(
         responses=UserListSerializer(many=True),  
         description="Get all client users"
@@ -237,7 +287,7 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         
         client_users = User.objects.filter(role='client', is_active=True)
-        serializer = UserListSerializer(client_users, many=True)  # CHANGED THIS
+        serializer = UserListSerializer(client_users, many=True)
         return Response(serializer.data)
 
     def get_queryset(self):
@@ -250,7 +300,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return User.objects.none()
         
         if user.role == 'admin':
-            return User.objects.all().order_by('-date_joined')  # ADDED ORDERING
+            return User.objects.all().order_by('-date_joined')
         elif user.role == 'manager':
             # Managers can see everyone except admins
             return User.objects.exclude(role='admin').order_by('-date_joined')
@@ -320,7 +370,7 @@ class UserViewSet(viewsets.ModelViewSet):
         Admin-only endpoint to get all users with full details
         """
         users = User.objects.all().order_by('-date_joined')
-        serializer = UserListSerializer(users, many=True)  # CHANGED TO UserListSerializer
+        serializer = UserListSerializer(users, many=True)
         return Response(serializer.data)
     
     @extend_schema(
@@ -386,7 +436,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # Override update method to use UserUpdateSerializer
+    # Override update method to use UserUpdateSerializer with context
     def update(self, request, *args, **kwargs):
         """
         Update user information
@@ -400,7 +450,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        serializer = UserUpdateSerializer(user, data=request.data, partial=True)
+        serializer = UserUpdateSerializer(user, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         

@@ -1,7 +1,6 @@
 # apps/reports/models.py
 from django.db import models
 import uuid
-import json
 from apps.users.models import User
 
 class Report(models.Model):
@@ -12,6 +11,7 @@ class Report(models.Model):
         ('feedback_summary', 'Feedback Summary'),
         ('team_performance', 'Team Performance'),
         ('resolution_analytics', 'Resolution Analytics'),
+        ('performance_dashboard', 'Performance Dashboard'),
     )
     
     STATUS_CHOICES = (
@@ -23,17 +23,15 @@ class Report(models.Model):
     
     FORMAT_CHOICES = (
         ('csv', 'CSV'),
-        ('excel', 'Excel'),
         ('pdf', 'PDF'),
-        ('json', 'JSON'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(max_length=50, choices=TYPE_CHOICES)
-    format = models.CharField(max_length=10, choices=FORMAT_CHOICES, default='excel')
+    format = models.CharField(max_length=10, choices=FORMAT_CHOICES, default='pdf')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reports')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    parameters = models.JSONField(default=dict, blank=True)  # Store filters, date ranges, etc.
+    parameters = models.JSONField(default=dict, blank=True)
     result_path = models.FileField(upload_to='reports/', null=True, blank=True)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
