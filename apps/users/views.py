@@ -8,6 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse
 
 from .serializers import (
     RegisterSerializer,
@@ -18,7 +19,7 @@ from .serializers import (
     UserUpdateSerializer,
     LoginSerializer,
     ChangePasswordSerializer,
-    AdminCreateUserSerializer  # Add this import
+    AdminCreateUserSerializer
 )
 
 User = get_user_model()
@@ -35,7 +36,7 @@ class CustomLoginView(TokenObtainPairView):
 
 
 # ------------------------------------------------------------
-# USER VIEWSET (UPDATED FOR ADMIN CREATE FUNCTIONALITY)
+# USER VIEWSET (FIXED AVATAR ENDPOINTS)
 # ------------------------------------------------------------
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -79,13 +80,102 @@ class UserViewSet(viewsets.ModelViewSet):
             return [IsAdminUser()]
         elif self.action == 'list':
             return [IsAuthenticated()]
-        elif self.action in ['retrieve', 'profile', 'me', 'change_password', 'upload_avatar']:
+        elif self.action in ['retrieve', 'profile', 'me', 'change_password', 'avatar']:
             return [IsAuthenticated()]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
-            # Only admin can create/update/delete users (except self-profile updates)
             return [IsAdminUser()]
         else:
             return [IsAuthenticated()]
+
+    # ... [Keep all your existing methods like register, admin_create, profile, etc.] ...
+
+    @extend_schema(
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'avatar': {'type': 'string', 'format': 'binary'}
+                }
+            }
+        },
+        responses=ProfileSerializer,
+        description="Upload or remove user avatar"
+    )
+    @action(detail=False, methods=['post', 'delete'], url_path='me/avatar', 
+            parser_classes=[MultiPartParser, FormParser])
+    def avatar(self, request):
+        """
+        Combined endpoint for uploading and removing user avatar
+        """
+        user = request.user
+        
+        if request.method == 'POST':
+            # Handle avatar upload
+            if 'avatar' not in request.FILES:
+                return Response(
+                    {"error": "No avatar file provided"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            avatar_file = request.FILES['avatar']
+            
+            # Validate file size (max 5MB)
+            if avatar_file.size > 5 * 1024 * 1024:
+                return Response(
+                    {"error": "Avatar file size must be less than 5MB"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+            if avatar_file.content_type not in allowed_types:
+                return Response(
+                    {"error": "File must be an image (JPEG, PNG, GIF, WebP)"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Save avatar
+            user.avatar = avatar_file
+            user.save()
+            
+            serializer = ProfileSerializer(user)
+            return Response(serializer.data)
+            
+        elif request.method == 'DELETE':
+            # Handle avatar removal
+            if not user.avatar:
+                return Response(
+                    {"error": "No avatar to remove"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Delete the avatar file
+            user.avatar.delete(save=False)
+            user.avatar = None
+            user.save()
+            
+            serializer = ProfileSerializer(user)
+            return Response(serializer.data)
+
+    @extend_schema(
+        request=ChangePasswordSerializer,
+        responses={200: OpenApiResponse(description="Password changed successfully")},
+        description="Change user password"
+    )
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def change_password(self, request):
+        """
+        Change user password
+        """
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+
+        return Response({"detail": "Password changed successfully"}, status=status.HTTP_200_OK)
 
     @extend_schema(
         request=RegisterSerializer,
@@ -359,7 +449,35 @@ class UserViewSet(viewsets.ModelViewSet):
         
         serializer = ProfileSerializer(user)
         return Response(serializer.data)
+   
 
+    # Add this to your UserViewSet class
+
+    @extend_schema(
+        responses=ProfileSerializer,
+        description="Remove user avatar"
+    )
+    @action(detail=False, methods=['delete'], url_path='me/avatar')
+    def remove_avatar(self, request):
+        """
+        Remove user avatar
+        """
+        user = request.user
+        
+        if not user.avatar:
+            return Response(
+                {"error": "No avatar to remove"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Delete the avatar file
+        if user.avatar:
+            user.avatar.delete(save=False)
+            user.avatar = None
+            user.save()
+        
+        serializer = ProfileSerializer(user)
+        return Response(serializer.data)
     @extend_schema(
         responses=UserListSerializer(many=True),
         description="Admin-only endpoint to get all users with full details"
