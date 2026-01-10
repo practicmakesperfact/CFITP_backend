@@ -2,13 +2,11 @@ from rest_framework import viewsets, status, mixins
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
-from datetime import datetime, timedelta
-from django.http import FileResponse, HttpResponse
-from django.shortcuts import get_object_or_404
-import os
+from datetime import datetime
+from django.http import HttpResponse, FileResponse
 import csv
+import os
 
 from .models import Report
 from .serializers import ReportSerializer
@@ -21,101 +19,104 @@ class ReportViewSet(mixins.CreateModelMixin,
                     mixins.DestroyModelMixin,
                     viewsets.GenericViewSet):
     """
-    Report ViewSet for creating and managing reports.
+    API endpoint for creating, retrieving, and managing reports
     """
+    
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
     permission_classes = [IsAuthenticated, IsStaffOrManager]
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     def get_queryset(self):
-        # Users can only see their own reports
         return self.queryset.filter(user=self.request.user).order_by('-created_at')
     
     def perform_create(self, serializer):
-        """Save report with user and initial status"""
-        serializer.save(
-            user=self.request.user,
-            status='pending'  # Initial status
-        )
+        serializer.save(user=self.request.user, status='pending')
     
     def create(self, request, *args, **kwargs):
-        """Override create to start report generation"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
+        """
+        Create a new report generation request - NOW USES REAL CELERY
+        """
         try:
-            # Save the report
-            report = serializer.save()
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
             
-            # Start report generation in background (Celery task)
-            self._start_report_generation(report)
+            report = serializer.instance
+            
+            # ✅ REAL CELERY TASK - NOT SIMULATION
+            try:
+                from .tasks import generate_report_task
+                # Start the Celery task asynchronously
+                task = generate_report_task.delay(str(report.id))
+                
+                # Store task ID for reference
+                report.task_id = task.id
+                report.save()
+                
+                logger.info(f"Started Celery task {task.id} for report {report.id}")
+                
+            except Exception as celery_error:
+                # If Celery fails, mark as failed
+                logger.error(f"Failed to start Celery task: {celery_error}")
+                report.status = 'failed'
+                report.error_message = f"Failed to start background task: {celery_error}"
+                report.save()
             
             headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            return Response({
+                'data': serializer.data,
+                'success': True,
+                'message': 'Report generation started successfully',
+                'task_id': getattr(report, 'task_id', None),
+                'report_id': str(report.id)
+            }, status=status.HTTP_201_CREATED, headers=headers)
             
         except Exception as e:
-            return Response(
-                {'detail': f'Failed to create report: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    def _start_report_generation(self, report):
-        """Start report generation using Celery"""
-        from .tasks import generate_report_task
-        
-        # Start the background task
-        generate_report_task.delay(str(report.id))
+            return Response({
+                'data': None,
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to create report request'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'])
     def analytics(self, request):
-        """Get analytics data for dashboard"""
+        """
+        Retrieve REAL analytics data from database for dashboard visualization
+        """
         try:
-            # Get date range from query params
             start_date_str = request.query_params.get('start_date')
             end_date_str = request.query_params.get('end_date')
             
-            # Convert string dates to datetime objects
             start_date = None
             end_date = None
             
             if start_date_str:
-                try:
-                    start_date = datetime.fromisoformat(start_date_str)
-                except ValueError:
-                    return Response(
-                        {"error": f"Invalid start_date format: {start_date_str}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
+                start_date = datetime.fromisoformat(start_date_str)
                 if timezone.is_naive(start_date):
                     start_date = timezone.make_aware(start_date)
             
             if end_date_str:
-                try:
-                    end_date = datetime.fromisoformat(end_date_str)
-                except ValueError:
-                    return Response(
-                        {"error": f"Invalid end_date format: {end_date_str}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
+                end_date = datetime.fromisoformat(end_date_str)
                 if timezone.is_naive(end_date):
                     end_date = timezone.make_aware(end_date)
-                # Set to end of day
                 end_date = end_date.replace(hour=23, minute=59, second=59)
             
-            # Get filters
             priority = request.query_params.get('priority', '').split(',') if request.query_params.get('priority') else []
             status_filter = request.query_params.get('status', '').split(',') if request.query_params.get('status') else []
+            sla_only = request.query_params.get('sla_only', '').lower() == 'true'
             
-            # Get analytics data
+            priority = [p for p in priority if p]
+            status_filter = [s for s in status_filter if s]
+            
+            # ✅ Get REAL data from database (not mock)
             analytics_data = ReportService.get_analytics_data(
                 start_date=start_date,
                 end_date=end_date,
                 user=request.user,
                 priority_filter=priority,
-                status_filter=status_filter
+                status_filter=status_filter,
+                sla_only=sla_only
             )
             
             return Response({
@@ -133,55 +134,32 @@ class ReportViewSet(mixins.CreateModelMixin,
                 'message': 'Failed to fetch analytics data'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=False, methods=['get'])
-    def metrics(self, request):
-        """Get real-time metrics for dashboard"""
-        try:
-            from apps.issues.models import Issue
-            from apps.feedback.models import Feedback
-            
-            # Get time frame (last 24 hours)
-            twenty_four_hours_ago = timezone.now() - timedelta(hours=24)
-            
-            # Simple real-time metrics
-            metrics = {
-                'total_issues': Issue.objects.count(),
-                'open_issues': Issue.objects.filter(status='open').count(),
-                'in_progress_issues': Issue.objects.filter(status='in_progress').count(),
-                'resolved_today': Issue.objects.filter(
-                    status='resolved',
-                    updated_at__gte=twenty_four_hours_ago
-                ).count(),
-                'new_issues_today': Issue.objects.filter(
-                    created_at__gte=twenty_four_hours_ago
-                ).count(),
-                'total_feedback': Feedback.objects.count(),
-                'new_feedback_today': Feedback.objects.filter(
-                    created_at__gte=twenty_four_hours_ago
-                ).count(),
-                'timestamp': timezone.now().isoformat(),
-                'database_status': 'connected',
-                'last_updated': timezone.now().strftime('%I:%M:%S %p')
-            }
-            
-            return Response({
-                'data': metrics,
-                'success': True
-            })
-            
-        except Exception as e:
-            return Response({
-                'data': None,
-                'success': False,
-                'error': str(e),
-                'database_status': 'disconnected'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
     @action(detail=True, methods=['get'])
     def status(self, request, pk=None):
-        """Get report generation status"""
+        """
+        Check the status of a report generation task
+        """
         try:
             report = self.get_object()
+            
+            # Check if Celery task is still running
+            task_status = 'unknown'
+            if hasattr(report, 'task_id') and report.task_id:
+                try:
+                    from celery.result import AsyncResult
+                    from CFIT.celery import app
+                    
+                    result = AsyncResult(report.task_id, app=app)
+                    task_status = result.status
+                    
+                    # If task failed but report status hasn't been updated
+                    if result.failed() and report.status != 'failed':
+                        report.status = 'failed'
+                        report.error_message = str(result.result)
+                        report.save()
+                    
+                except:
+                    task_status = 'unknown'
             
             return Response({
                 'data': {
@@ -194,7 +172,9 @@ class ReportViewSet(mixins.CreateModelMixin,
                     'created_at': report.created_at,
                     'updated_at': report.updated_at,
                     'result_available': report.status == 'generated' and bool(report.result_path),
-                    'result_path': report.result_path.url if report.result_path else None
+                    'result_path': report.result_path.url if report.result_path else None,
+                    'task_status': task_status,
+                    'error_message': report.error_message
                 },
                 'success': True
             })
@@ -206,57 +186,12 @@ class ReportViewSet(mixins.CreateModelMixin,
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=True, methods=['get'])
-    def download(self, request, pk=None):
-        """Download the generated report file"""
-        try:
-            report = self.get_object()
-            
-            if report.status != 'generated' or not report.result_path:
-                return Response(
-                    {"detail": "Report not available for download."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Check if file exists
-            if not report.result_path or not os.path.exists(report.result_path.path):
-                return Response(
-                    {"detail": "Report file not found."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Open the file for reading
-            response = FileResponse(
-                open(report.result_path.path, 'rb'),
-                content_type='application/octet-stream'
-            )
-            
-            # Set content disposition for download
-            filename = f"report_{report.type}_{report.created_at.strftime('%Y%m%d_%H%M%S')}.{report.format}"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-            
-        except Exception as e:
-            return Response(
-                {"detail": f"Error downloading file: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
     @action(detail=False, methods=['get'])
     def export(self, request):
-        """Quick export endpoint (CSV only)"""
+        """
+        Quick CSV export endpoint for dashboard data - USES REAL DATA
+        """
         try:
-            export_format = request.query_params.get('format', 'csv')
-            
-            # Only support CSV
-            if export_format != 'csv':
-                return Response(
-                    {"detail": f"Only CSV export is supported. Requested format: {export_format}"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Get date range from query params
             start_date_str = request.query_params.get('start_date')
             end_date_str = request.query_params.get('end_date')
             
@@ -272,14 +207,15 @@ class ReportViewSet(mixins.CreateModelMixin,
                 end_date = datetime.fromisoformat(end_date_str)
                 if timezone.is_naive(end_date):
                     end_date = timezone.make_aware(end_date)
-                # Set to end of day
                 end_date = end_date.replace(hour=23, minute=59, second=59)
             
-            # Get filters
             priority = request.query_params.get('priority', '').split(',') if request.query_params.get('priority') else []
             status_filter = request.query_params.get('status', '').split(',') if request.query_params.get('status') else []
             
-            # Get analytics data
+            priority = [p for p in priority if p]
+            status_filter = [s for s in status_filter if s]
+            
+            # ✅ Get REAL data from database
             data = ReportService.get_analytics_data(
                 start_date=start_date,
                 end_date=end_date,
@@ -288,27 +224,23 @@ class ReportViewSet(mixins.CreateModelMixin,
                 status_filter=status_filter
             )
             
-            # Create CSV response
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="cfitp_export_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
             
             writer = csv.writer(response)
             
-            # Header
             writer.writerow(['CFITP Analytics Dashboard Export'])
             writer.writerow([f'Period: {data.get("period_display", "N/A")}'])
             writer.writerow([f'Generated: {timezone.now().strftime("%Y-%m-%d %H:%M:%S")}'])
             writer.writerow([f'Generated by: {request.user.email}'])
             writer.writerow([])
             
-            # Summary Metrics
             writer.writerow(['SUMMARY METRICS'])
             writer.writerow(['Metric', 'Value'])
             for key, value in data.get('summary', {}).items():
                 writer.writerow([key.replace('_', ' ').title(), value])
             writer.writerow([])
             
-            # Issues by Status
             if 'issues_by_status' in data and data['issues_by_status']:
                 writer.writerow(['ISSUES BY STATUS'])
                 writer.writerow(['Status', 'Count', 'Percentage'])
@@ -320,7 +252,6 @@ class ReportViewSet(mixins.CreateModelMixin,
                     ])
                 writer.writerow([])
             
-            # Issues by Priority
             if 'issues_by_priority' in data and data['issues_by_priority']:
                 writer.writerow(['ISSUES BY PRIORITY'])
                 writer.writerow(['Priority', 'Count', 'Percentage'])
@@ -332,7 +263,6 @@ class ReportViewSet(mixins.CreateModelMixin,
                     ])
                 writer.writerow([])
             
-            # Team Performance
             if 'team_performance' in data and data['team_performance']:
                 writer.writerow(['TEAM PERFORMANCE'])
                 writer.writerow(['Name', 'Email', 'Role', 'Assigned', 'Resolved', 'Pending', 'Efficiency %', 'Avg. Resolution (hours)'])
@@ -351,7 +281,105 @@ class ReportViewSet(mixins.CreateModelMixin,
             return response
             
         except Exception as e:
-            return Response(
-                {"error": str(e), "detail": "CSV export failed"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return Response({
+                "error": str(e),
+                "detail": "CSV export failed"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """
+        Download a generated report file - NOW SERVES REAL FILES
+        """
+        try:
+            report = self.get_object()
+            
+            # Check if report is ready
+            if report.status != 'generated' or not report.result_path:
+                return Response({
+                    'error': 'Report not ready for download',
+                    'status': report.status,
+                    'result_available': bool(report.result_path)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if file exists on disk
+            file_path = report.result_path.path if hasattr(report.result_path, 'path') else str(report.result_path)
+            
+            if not os.path.exists(file_path):
+                return Response({
+                    'error': 'Report file not found on server'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Return the REAL file
+            response = FileResponse(
+                open(file_path, 'rb'),
+                as_attachment=True,
+                filename=os.path.basename(file_path)
             )
+            
+            # Set appropriate content type
+            if file_path.endswith('.pdf'):
+                response['Content-Type'] = 'application/pdf'
+            elif file_path.endswith('.csv'):
+                response['Content-Type'] = 'text/csv'
+            elif file_path.endswith('.xlsx'):
+                response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            
+            return response
+            
+        except Exception as e:
+            return Response({
+                'error': str(e),
+                'detail': 'Failed to download report'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'])
+    def metrics(self, request):
+        """
+        Quick metrics endpoint using REAL database data
+        """
+        try:
+            user_reports = Report.objects.filter(user=request.user)
+            
+            # Get active report tasks
+            pending_tasks = user_reports.filter(status='processing').count()
+            
+            metrics_data = {
+                'total_reports': user_reports.count(),
+                'generated_reports': user_reports.filter(status='generated').count(),
+                'processing_reports': pending_tasks,
+                'pending_reports': user_reports.filter(status='pending').count(),
+                'failed_reports': user_reports.filter(status='failed').count(),
+                'recent_reports': ReportSerializer(
+                    user_reports.order_by('-created_at')[:5], 
+                    many=True
+                ).data,
+                'report_types': {
+                    'performance_dashboard': user_reports.filter(type='performance_dashboard').count(),
+                    'team_member_performance': user_reports.filter(type='team_member_performance').count(),
+                    'issue_summary': user_reports.filter(type='issue_summary').count(),
+                },
+                'report_formats': {
+                    'pdf': user_reports.filter(format='pdf').count(),
+                    'csv': user_reports.filter(format='csv').count(),
+                    'xlsx': user_reports.filter(format='xlsx').count(),
+                }
+            }
+            
+            return Response({
+                'data': metrics_data,
+                'success': True,
+                'message': 'Metrics retrieved successfully'
+            })
+            
+        except Exception as e:
+            return Response({
+                'data': None,
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to fetch metrics'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Add logging
+import logging
+logger = logging.getLogger(__name__)

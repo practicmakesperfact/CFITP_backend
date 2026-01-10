@@ -7,190 +7,403 @@ import json
 import csv
 import io
 from datetime import datetime
+import logging
+import os
 
-@shared_task
-def generate_report_task(report_id):
+logger = logging.getLogger(__name__)
+
+@shared_task(bind=True, max_retries=3)
+def generate_report_task(self, report_id):
     """Background task to generate report files"""
     try:
         report = Report.objects.get(id=report_id)
+        logger.info(f"Starting report generation: {report.id} for user {report.user.email}")
+        
         report.status = 'processing'
         report.save()
         
-        # Get data from ReportService
+        # Get data from ReportService (USES REAL DATABASE DATA)
         params = report.parameters
+        
+        # Extract date parameters
+        start_date = None
+        end_date = None
+        
+        if params.get('start_date'):
+            start_date = datetime.fromisoformat(params.get('start_date'))
+            if timezone.is_naive(start_date):
+                start_date = timezone.make_aware(start_date)
+        
+        if params.get('end_date'):
+            end_date = datetime.fromisoformat(params.get('end_date'))
+            if timezone.is_naive(end_date):
+                end_date = timezone.make_aware(end_date)
+            end_date = end_date.replace(hour=23, minute=59, second=59)
+        
+        # Get priority and status filters
+        priority_filter = params.get('priority', [])
+        status_filter = params.get('status', [])
+        
+        # Get REAL data from database
         data = ReportService.get_analytics_data(
-            start_date=params.get('start_date'),
-            end_date=params.get('end_date'),
+            start_date=start_date,
+            end_date=end_date,
             user=report.user,
-            report_type=report.type,
-            priority_filter=params.get('priority', []),
-            status_filter=params.get('status', [])
+            priority_filter=priority_filter,
+            status_filter=status_filter,
+            sla_only=params.get('sla_only', False),
+            high_priority_only=params.get('high_priority_only', False),
+            include_feedback=params.get('include_feedback', True)
         )
         
         # Generate file based on format
         filename = f"report_{report.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
         
         if report.format == 'csv':
-            content = generate_csv(data)
+            content = generate_csv(data, report.user)
             file_extension = '.csv'
             content_type = 'text/csv'
         elif report.format == 'json':
             content = json.dumps(data, indent=2, default=str)
             file_extension = '.json'
             content_type = 'application/json'
-        else:  # pdf (default)
-            content = generate_pdf(data)
+        elif report.format == 'pdf':
+            content = generate_pdf(data, report.user)
             file_extension = '.pdf'
             content_type = 'application/pdf'
+        else:
+            # Default to CSV
+            content = generate_csv(data, report.user)
+            file_extension = '.csv'
+            content_type = 'text/csv'
         
         # Save file to report model
         filename_with_ext = f"{filename}{file_extension}"
+        
+        # Create content file
+        if isinstance(content, str):
+            file_content = ContentFile(content.encode('utf-8'))
+        else:
+            file_content = ContentFile(content)
+        
+        # Save the file
         report.result_path.save(
             filename_with_ext,
-            ContentFile(content.encode() if isinstance(content, str) else content),
+            file_content,
             save=False
         )
         
         report.status = 'generated'
         report.save()
         
-        return f"Report {report_id} generated successfully"
+        logger.info(f"Report {report_id} generated successfully. File: {report.result_path.name}")
+        
+        # Return success response
+        return {
+            'success': True,
+            'report_id': str(report_id),
+            'file_path': report.result_path.name,
+            'file_url': report.result_path.url if report.result_path else None
+        }
         
     except Exception as e:
+        logger.error(f"Failed to generate report {report_id}: {str(e)}")
+        
+        # Update report status
         if 'report' in locals():
             report.status = 'failed'
             report.error_message = str(e)
             report.save()
-        raise e
+        
+        # Retry the task (Celery will handle retries)
+        raise self.retry(exc=e, countdown=60)  # Retry after 60 seconds
 
-def generate_csv(data):
-    """Generate CSV content from data"""
+def generate_csv(data, user):
+    """Generate CSV content from REAL database data"""
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Write summary
-    writer.writerow(['CFITP Analytics Report'])
+    # Write header
+    writer.writerow(['CFITP ANALYTICS DASHBOARD REPORT'])
     writer.writerow([f"Period: {data.get('period_display', 'N/A')}"])
     writer.writerow([f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+    writer.writerow([f"Generated by: {user.email}"])
     writer.writerow([])
-    writer.writerow(['Summary Metrics'])
+    
+    # Write summary metrics
+    writer.writerow(['SUMMARY METRICS'])
     writer.writerow(['Metric', 'Value'])
     
-    for key, value in data.get('summary', {}).items():
+    summary = data.get('summary', {})
+    for key, value in summary.items():
         writer.writerow([key.replace('_', ' ').title(), value])
     
-    # Write issues by status if available
-    if 'issues_by_status' in data and data['issues_by_status']:
-        writer.writerow([])
-        writer.writerow(['Issues by Status'])
-        writer.writerow(['Status', 'Count'])
-        for item in data['issues_by_status']:
-            writer.writerow([item.get('status_display', item.get('status', 'Unknown')), item.get('count', 0)])
+    writer.writerow([])
     
-    # Write issues by priority if available
-    if 'issues_by_priority' in data and data['issues_by_priority']:
+    # Write issues by status
+    issues_by_status = data.get('issues_by_status', [])
+    if issues_by_status:
+        writer.writerow(['ISSUES BY STATUS'])
+        writer.writerow(['Status', 'Count', 'Percentage'])
+        for item in issues_by_status:
+            writer.writerow([
+                item.get('status_display', item.get('status', 'Unknown')),
+                item.get('count', 0),
+                f"{item.get('percentage', 0)}%"
+            ])
         writer.writerow([])
-        writer.writerow(['Issues by Priority'])
-        writer.writerow(['Priority', 'Count'])
-        for item in data['issues_by_priority']:
-            writer.writerow([item.get('priority_display', item.get('priority', 'Unknown')), item.get('count', 0)])
+    
+    # Write issues by priority
+    issues_by_priority = data.get('issues_by_priority', [])
+    if issues_by_priority:
+        writer.writerow(['ISSUES BY PRIORITY'])
+        writer.writerow(['Priority', 'Count', 'Percentage'])
+        for item in issues_by_priority:
+            writer.writerow([
+                item.get('priority_display', item.get('priority', 'Unknown')),
+                item.get('count', 0),
+                f"{item.get('percentage', 0)}%"
+            ])
+        writer.writerow([])
+    
+    # Write team performance
+    team_performance = data.get('team_performance', [])
+    if team_performance:
+        writer.writerow(['TEAM PERFORMANCE'])
+        writer.writerow(['Name', 'Email', 'Role', 'Assigned', 'Resolved', 'Pending', 'Efficiency %', 'Avg. Resolution (hours)'])
+        for member in team_performance:
+            writer.writerow([
+                member.get('name', 'N/A'),
+                member.get('email', 'N/A'),
+                member.get('role', 'N/A'),
+                member.get('total_assigned', 0),
+                member.get('resolved', 0),
+                member.get('pending', 0),
+                member.get('efficiency', 0),
+                member.get('avg_resolution_time_hours', 'N/A')
+            ])
     
     return output.getvalue()
 
-def generate_pdf(data):
-    """Generate PDF content from data using ReportLab"""
+def generate_pdf(data, user):
+    """Generate PDF content from data using ReportLab (REAL DATA)"""
     try:
         # Check if ReportLab is installed
-        from reportlab.lib.pagesizes import letter
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.units import inch
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch, cm
         from reportlab.lib import colors
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
         from io import BytesIO
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+        import io as pyio
         
         # Create PDF buffer
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter)
         
-        # Container for the 'Flowable' objects
-        elements = []
+        # Custom styles
         styles = getSampleStyleSheet()
         
+        # Title style
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Title'],
+            fontSize=18,
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#0EA5A4')  # Your teal color
+        )
+        
+        # Heading style
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceAfter=10,
+            spaceBefore=15,
+            textColor=colors.HexColor('#334155')  # Your text color
+        )
+        
+        # Create document
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=2*cm,
+            leftMargin=2*cm,
+            topMargin=2*cm,
+            bottomMargin=2*cm
+        )
+        
+        # Container for elements
+        elements = []
+        
         # Title
-        title = Paragraph("CFITP Analytics Report", styles['Title'])
+        title = Paragraph("CFITP Analytics Dashboard Report", title_style)
         elements.append(title)
         
-        # Period
-        period = Paragraph(f"Period: {data.get('period_display', 'N/A')}", styles['Normal'])
-        elements.append(period)
-        
-        # Generated date
-        generated = Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal'])
-        elements.append(generated)
-        
-        elements.append(Spacer(1, 0.25*inch))
+        # Metadata
+        elements.append(Paragraph(f"<b>Period:</b> {data.get('period_display', 'N/A')}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Generated by:</b> {user.email}", styles['Normal']))
+        elements.append(Spacer(1, 0.5*inch))
         
         # Summary Metrics
-        elements.append(Paragraph("Summary Metrics", styles['Heading2']))
+        elements.append(Paragraph("Summary Metrics", heading_style))
+        
+        summary = data.get('summary', {})
+        summary_data = [['Metric', 'Value']]
+        
+        # Add key metrics
+        key_metrics = ['total_issues', 'open_issues', 'in_progress_issues', 
+                      'resolved_issues', 'closed_issues', 'team_efficiency',
+                      'avg_resolution_time', 'first_response_time', 
+                      'sla_compliance', 'reopen_rate']
+        
+        for metric in key_metrics:
+            if metric in summary:
+                display_name = metric.replace('_', ' ').title()
+                summary_data.append([display_name, str(summary[metric])])
         
         # Create summary table
-        summary_data = [['Metric', 'Value']]
-        for key, value in data.get('summary', {}).items():
-            summary_data.append([key.replace('_', ' ').title(), str(value)])
+        summary_table = Table(
+            summary_data, 
+            colWidths=[3*inch, 2*inch],
+            hAlign='LEFT'
+        )
         
-        summary_table = Table(summary_data, colWidths=[2.5*inch, 2.5*inch])
         summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0EA5A4')),  # Teal header
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')),  # Your bg color
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
+            ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         
         elements.append(summary_table)
         elements.append(Spacer(1, 0.25*inch))
         
+        # Page break for detailed data
+        elements.append(PageBreak())
+        
         # Issues by Status
-        if 'issues_by_status' in data and data['issues_by_status']:
-            elements.append(Paragraph("Issues by Status", styles['Heading2']))
+        issues_by_status = data.get('issues_by_status', [])
+        if issues_by_status:
+            elements.append(Paragraph("Issues by Status", heading_style))
             
-            status_data = [['Status', 'Count']]
-            for item in data['issues_by_status']:
+            status_data = [['Status', 'Count', 'Percentage']]
+            for item in issues_by_status:
                 status_data.append([
                     item.get('status_display', item.get('status', 'Unknown')),
-                    str(item.get('count', 0))
+                    str(item.get('count', 0)),
+                    f"{item.get('percentage', 0)}%"
                 ])
             
-            status_table = Table(status_data, colWidths=[2.5*inch, 2.5*inch])
+            status_table = Table(
+                status_data,
+                colWidths=[2*inch, 1.5*inch, 1.5*inch],
+                hAlign='LEFT'
+            )
+            
             status_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3B82F6')),  # Blue header
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
             ]))
             
             elements.append(status_table)
             elements.append(Spacer(1, 0.25*inch))
         
         # Issues by Priority
-        if 'issues_by_priority' in data and data['issues_by_priority']:
-            elements.append(Paragraph("Issues by Priority", styles['Heading2']))
+        issues_by_priority = data.get('issues_by_priority', [])
+        if issues_by_priority:
+            elements.append(Paragraph("Issues by Priority", heading_style))
             
-            priority_data = [['Priority', 'Count']]
-            for item in data['issues_by_priority']:
+            priority_data = [['Priority', 'Count', 'Percentage']]
+            for item in issues_by_priority:
                 priority_data.append([
                     item.get('priority_display', item.get('priority', 'Unknown')),
-                    str(item.get('count', 0))
+                    str(item.get('count', 0)),
+                    f"{item.get('percentage', 0)}%"
                 ])
             
-            priority_table = Table(priority_data, colWidths=[2.5*inch, 2.5*inch])
+            priority_table = Table(
+                priority_data,
+                colWidths=[2*inch, 1.5*inch, 1.5*inch],
+                hAlign='LEFT'
+            )
+            
             priority_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgreen),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F59E0B')),  # Orange header
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.lavenderblush),
+                ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
             ]))
             
             elements.append(priority_table)
+            elements.append(Spacer(1, 0.25*inch))
+        
+        # Team Performance
+        team_performance = data.get('team_performance', [])
+        if team_performance:
+            elements.append(Paragraph("Team Performance", heading_style))
+            
+            team_data = [['Name', 'Assigned', 'Resolved', 'Pending', 'Efficiency %']]
+            for member in team_performance[:10]:  # Limit to top 10
+                team_data.append([
+                    member.get('name', 'N/A'),
+                    str(member.get('total_assigned', 0)),
+                    str(member.get('resolved', 0)),
+                    str(member.get('pending', 0)),
+                    f"{member.get('efficiency', 0)}%"
+                ])
+            
+            team_table = Table(
+                team_data,
+                colWidths=[2.5*inch, 1*inch, 1*inch, 1*inch, 1*inch],
+                hAlign='LEFT'
+            )
+            
+            team_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10B981')),  # Green header
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F0FDF4')),  # Light green
+                ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+            ]))
+            
+            elements.append(team_table)
+        
+        # Footer note
+        elements.append(Spacer(1, 0.5*inch))
+        elements.append(Paragraph(
+            "<i>Note: This report was generated automatically by the CFITP system. "
+            "All data is based on real-time database records.</i>",
+            ParagraphStyle(
+                'Footer',
+                parent=styles['Italic'],
+                fontSize=9,
+                textColor=colors.gray,
+                alignment=TA_CENTER
+            )
+        ))
         
         # Build PDF
         doc.build(elements)
@@ -201,34 +414,54 @@ def generate_pdf(data):
         
         return pdf
         
-    except ImportError:
-        # Fallback to simple text if ReportLab is not installed
-        return generate_simple_pdf(data)
+    except ImportError as e:
+        logger.warning(f"ReportLab not installed: {e}. Using simple PDF fallback.")
+        return generate_simple_pdf(data, user)
+    except Exception as e:
+        logger.error(f"PDF generation error: {e}. Using simple fallback.")
+        return generate_simple_pdf(data, user)
 
-def generate_simple_pdf(data):
+def generate_simple_pdf(data, user):
     """Fallback PDF generation without ReportLab"""
     content = f"""
-    CFITP Analytics Report
-    =====================
+    CFITP ANALYTICS DASHBOARD REPORT
+    =================================
     
     Period: {data.get('period_display', 'N/A')}
     Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+    Generated by: {user.email}
     
-    Summary Metrics:
-    ----------------
+    SUMMARY METRICS
+    ---------------
     """
     
-    for key, value in data.get('summary', {}).items():
+    summary = data.get('summary', {})
+    for key, value in summary.items():
         content += f"{key.replace('_', ' ').title()}: {value}\n"
     
-    if 'issues_by_status' in data and data['issues_by_status']:
-        content += "\nIssues by Status:\n----------------\n"
-        for item in data['issues_by_status']:
-            content += f"{item.get('status_display', item.get('status', 'Unknown'))}: {item.get('count', 0)}\n"
+    issues_by_status = data.get('issues_by_status', [])
+    if issues_by_status:
+        content += "\nISSUES BY STATUS\n----------------\n"
+        for item in issues_by_status:
+            content += f"{item.get('status_display', item.get('status', 'Unknown'))}: {item.get('count', 0)} ({item.get('percentage', 0)}%)\n"
     
-    if 'issues_by_priority' in data and data['issues_by_priority']:
-        content += "\nIssues by Priority:\n------------------\n"
-        for item in data['issues_by_priority']:
-            content += f"{item.get('priority_display', item.get('priority', 'Unknown'))}: {item.get('count', 0)}\n"
+    issues_by_priority = data.get('issues_by_priority', [])
+    if issues_by_priority:
+        content += "\nISSUES BY PRIORITY\n------------------\n"
+        for item in issues_by_priority:
+            content += f"{item.get('priority_display', item.get('priority', 'Unknown'))}: {item.get('count', 0)} ({item.get('percentage', 0)}%)\n"
+    
+    team_performance = data.get('team_performance', [])
+    if team_performance:
+        content += "\nTEAM PERFORMANCE\n----------------\n"
+        for member in team_performance[:10]:  # Limit to top 10
+            content += f"{member.get('name', 'N/A')}: Assigned={member.get('total_assigned', 0)}, "
+            content += f"Resolved={member.get('resolved', 0)}, "
+            content += f"Pending={member.get('pending', 0)}, "
+            content += f"Efficiency={member.get('efficiency', 0)}%\n"
+    
+    content += "\n" + "="*50 + "\n"
+    content += "Generated by CFITP (Client Feedback & Issue Tracking Portal)\n"
+    content += "All data is based on real-time database records\n"
     
     return content

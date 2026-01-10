@@ -34,6 +34,7 @@ class Report(models.Model):
     parameters = models.JSONField(default=dict, blank=True)
     result_path = models.FileField(upload_to='reports/', null=True, blank=True)
     error_message = models.TextField(blank=True)
+    task_id = models.CharField(max_length=255, blank=True, null=True, help_text="Celery task ID")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -45,3 +46,12 @@ class Report(models.Model):
     
     def __str__(self):
         return f"{self.get_type_display()} - {self.user.email} ({self.status})"
+    def get_absolute_url(self):
+        """Get absolute URL for the report file"""
+        if self.result_path:
+            return self.result_path.url
+        return None
+    
+    def is_ready(self):
+        """Check if report is ready for download"""
+        return self.status == 'generated' and bool(self.result_path)
