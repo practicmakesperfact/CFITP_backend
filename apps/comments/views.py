@@ -54,4 +54,3 @@ class CommentViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         CommentService.delete_comment(instance, self.request.user)
 
-

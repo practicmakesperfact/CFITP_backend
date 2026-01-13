@@ -1,0 +1,38 @@
+============================================================
+CFITP PERFORMANCE TEST RESULTS
+============================================================
+Test Date: 2026-01-13 02:52:01
+
+DATABASE STATISTICS:
+----------------------------------------
+Total Users: 24
+Total Issues: 57
+Total Comments: 63
+Total Feedback: 16
+
+PERFORMANCE METRICS:
+----------------------------------------
+
+USER_CREATION:
+  count: 12
+  time_ms: 13415.8
+  per_second: 0.89
+
+ISSUE_CREATION:
+  count: 20
+  time_ms: 699.86
+  per_second: 28.58
+
+COMMENT_CREATION:
+  count: 50
+  time_ms: 1012.24
+
+API_PERFORMANCE:
+  fetch_15_issues_ms: 3.78
+  fetch_20_comments_ms: 8.57
+  total_issues_in_db: 57
+  total_comments_in_db: 63
+
+SEARCH_PERFORMANCE:
+  terms_tested: 3
+  average_ms: 257.33

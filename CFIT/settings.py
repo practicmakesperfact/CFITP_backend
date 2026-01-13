@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'django_extensions',
     'corsheaders',
+    'debug_toolbar',
 ]
 
 MIDDLEWARE = [
@@ -66,7 +67,18 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # Comment out for now until Redis is running
     # 'CFIT.middleware.RateLimitMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
+INTERNAL_IPS = [
+    '127.0.0.1',
+    'localhost',
+]
+DEBUG_TOOLBAR_CONFIG = {
+    'SHOW_TOOLBAR_CALLBACK': lambda request: True,  
+}
+
+
+
 
 ROOT_URLCONF = 'CFIT.urls'
 
@@ -162,6 +174,7 @@ SPECTACULAR_SETTINGS = {
     'ENFORCE_REQUEST_BODY_FORMAT': 'multipart/form-data',  
 }
 
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -186,6 +199,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_STORE_EAGER_RESULT = True
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media/'
@@ -205,3 +219,4 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = 'no-reply@example.com'
+

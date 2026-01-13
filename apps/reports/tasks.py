@@ -9,21 +9,29 @@ import io
 from datetime import datetime
 import logging
 import os
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def generate_report_task(self, report_id):
-    """Background task to generate report files"""
+    """Background task to generate report files - FIXED FOR IN-MEMORY CELERY"""
+    print(f"🎯 [CELERY TASK STARTED] Report ID: {report_id}")
+    
     try:
-        report = Report.objects.get(id=report_id)
-        logger.info(f"Starting report generation: {report.id} for user {report.user.email}")
+        # Get report from database
+        with transaction.atomic():
+            report = Report.objects.select_for_update().get(id=report_id)
+            print(f"✅ [CELERY] Found report: {report.id}, User: {report.user.email}, Initial status: {report.status}")
+            
+            # Update to processing
+            report.status = 'processing'
+            report.save(update_fields=['status', 'updated_at'])
+            print(f"📊 [CELERY] Report status set to 'processing'")
         
-        report.status = 'processing'
-        report.save()
-        
-        # Get data from ReportService (USES REAL DATABASE DATA)
+        # Get parameters
         params = report.parameters
+        print(f"📋 [CELERY] Report parameters: {params}")
         
         # Extract date parameters
         start_date = None
@@ -40,11 +48,19 @@ def generate_report_task(self, report_id):
                 end_date = timezone.make_aware(end_date)
             end_date = end_date.replace(hour=23, minute=59, second=59)
         
+        print(f"📅 [CELERY] Date range: {start_date} to {end_date}")
+        
         # Get priority and status filters
         priority_filter = params.get('priority', [])
+        if isinstance(priority_filter, str):
+            priority_filter = [p.strip() for p in priority_filter.split(',') if p.strip()]
+        
         status_filter = params.get('status', [])
+        if isinstance(status_filter, str):
+            status_filter = [s.strip() for s in status_filter.split(',') if s.strip()]
         
         # Get REAL data from database
+        print(f"📊 [CELERY] Fetching analytics data...")
         data = ReportService.get_analytics_data(
             start_date=start_date,
             end_date=end_date,
@@ -55,30 +71,29 @@ def generate_report_task(self, report_id):
             high_priority_only=params.get('high_priority_only', False),
             include_feedback=params.get('include_feedback', True)
         )
+        print(f"✅ [CELERY] Got analytics data with {data.get('summary', {}).get('total_issues', 0)} issues")
         
         # Generate file based on format
         filename = f"report_{report.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+        print(f"📄 [CELERY] Creating file: {filename}, Format: {report.format}")
         
         if report.format == 'csv':
             content = generate_csv(data, report.user)
             file_extension = '.csv'
-            content_type = 'text/csv'
         elif report.format == 'json':
             content = json.dumps(data, indent=2, default=str)
             file_extension = '.json'
-            content_type = 'application/json'
         elif report.format == 'pdf':
             content = generate_pdf(data, report.user)
             file_extension = '.pdf'
-            content_type = 'application/pdf'
         else:
             # Default to CSV
             content = generate_csv(data, report.user)
             file_extension = '.csv'
-            content_type = 'text/csv'
         
         # Save file to report model
         filename_with_ext = f"{filename}{file_extension}"
+        print(f"💾 [CELERY] Saving file: {filename_with_ext}")
         
         # Create content file
         if isinstance(content, str):
@@ -86,37 +101,60 @@ def generate_report_task(self, report_id):
         else:
             file_content = ContentFile(content)
         
-        # Save the file
-        report.result_path.save(
-            filename_with_ext,
-            file_content,
-            save=False
-        )
+        # Save the file and update status
+        with transaction.atomic():
+            # Get fresh report instance
+            fresh_report = Report.objects.get(id=report_id)
+            
+            # Save the file
+            fresh_report.result_path.save(
+                filename_with_ext,
+                file_content
+            )
+            
+            # Update status to generated
+            fresh_report.status = 'generated'
+            fresh_report.save(update_fields=['status', 'result_path', 'updated_at'])
+            
+            print(f"✅ [CELERY] File saved to: {fresh_report.result_path}")
         
-        report.status = 'generated'
-        report.save()
+        # Final verification
+        final_report = Report.objects.get(id=report_id)
+        print(f"✅ [CELERY TASK COMPLETED] Report {report_id} generated successfully.")
+        print(f"📊 [CELERY] Final status: {final_report.status}")
+        print(f"📁 [CELERY] Final file: {final_report.result_path}")
         
-        logger.info(f"Report {report_id} generated successfully. File: {report.result_path.name}")
+        # Log success
+        logger.info(f"Report {report_id} generated successfully. File: {fresh_report.result_path.name}")
         
         # Return success response
         return {
             'success': True,
             'report_id': str(report_id),
-            'file_path': report.result_path.name,
-            'file_url': report.result_path.url if report.result_path else None
+            'status': 'generated',
+            'file_path': str(fresh_report.result_path),
+            'file_url': fresh_report.result_path.url if fresh_report.result_path else None
         }
         
     except Exception as e:
-        logger.error(f"Failed to generate report {report_id}: {str(e)}")
+        print(f"❌ [CELERY TASK FAILED] Report {report_id}: {str(e)}")
+        logger.error(f"Failed to generate report {report_id}: {str(e)}", exc_info=True)
         
-        # Update report status
-        if 'report' in locals():
-            report.status = 'failed'
-            report.error_message = str(e)
-            report.save()
+        # Update report status to failed with error message
+        try:
+            with transaction.atomic():
+                failed_report = Report.objects.get(id=report_id)
+                failed_report.status = 'failed'
+                failed_report.error_message = str(e)[:500]  # Limit error message length
+                failed_report.save(update_fields=['status', 'error_message', 'updated_at'])
+                
+                print(f"⚠️ [CELERY] Report marked as failed: {failed_report.error_message}")
+        except Exception as save_error:
+            print(f"⚠️ [CELERY] Failed to save error status: {save_error}")
         
-        # Retry the task (Celery will handle retries)
-        raise self.retry(exc=e, countdown=60)  # Retry after 60 seconds
+        # Retry the task
+        print(f"🔄 [CELERY] Retrying task...")
+        raise self.retry(exc=e, countdown=30)  # Retry after 30 seconds
 
 def generate_csv(data, user):
     """Generate CSV content from REAL database data"""
@@ -187,6 +225,7 @@ def generate_csv(data, user):
 
 def generate_pdf(data, user):
     """Generate PDF content from data using ReportLab (REAL DATA)"""
+    print(f"📄 [CELERY] Generating PDF...")
     try:
         # Check if ReportLab is installed
         from reportlab.lib.pagesizes import letter, A4
@@ -197,10 +236,6 @@ def generate_pdf(data, user):
         from reportlab.pdfgen import canvas
         from reportlab.lib.enums import TA_CENTER, TA_LEFT
         from io import BytesIO
-        import matplotlib.pyplot as plt
-        import matplotlib
-        matplotlib.use('Agg')  # Non-interactive backend
-        import io as pyio
         
         # Create PDF buffer
         buffer = BytesIO()
@@ -412,17 +447,21 @@ def generate_pdf(data, user):
         pdf = buffer.getvalue()
         buffer.close()
         
+        print(f"✅ [CELERY] PDF generated successfully")
         return pdf
         
     except ImportError as e:
         logger.warning(f"ReportLab not installed: {e}. Using simple PDF fallback.")
+        print(f"⚠️ [CELERY] ReportLab not installed, using fallback")
         return generate_simple_pdf(data, user)
     except Exception as e:
         logger.error(f"PDF generation error: {e}. Using simple fallback.")
+        print(f"⚠️ [CELERY] PDF generation error: {e}, using fallback")
         return generate_simple_pdf(data, user)
 
 def generate_simple_pdf(data, user):
     """Fallback PDF generation without ReportLab"""
+    print(f"📄 [CELERY] Generating simple PDF fallback")
     content = f"""
     CFITP ANALYTICS DASHBOARD REPORT
     =================================
@@ -464,4 +503,5 @@ def generate_simple_pdf(data, user):
     content += "Generated by CFITP (Client Feedback & Issue Tracking Portal)\n"
     content += "All data is based on real-time database records\n"
     
+    print(f" [CELERY] Simple PDF content created")
     return content

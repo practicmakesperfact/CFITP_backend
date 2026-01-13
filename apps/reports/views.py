@@ -10,8 +10,12 @@ import os
 
 from .models import Report
 from .serializers import ReportSerializer
-from .services import ReportService
 from apps.users.permissions import IsStaffOrManager
+
+# Add logging
+import logging
+logger = logging.getLogger(__name__)
+
 
 class ReportViewSet(mixins.CreateModelMixin,
                     mixins.RetrieveModelMixin,
@@ -43,24 +47,27 @@ class ReportViewSet(mixins.CreateModelMixin,
             
             report = serializer.instance
             
-            # ✅ REAL CELERY TASK - NOT SIMULATION
+            # ✅ REAL CELERY TASK - IMPORT INSIDE FUNCTION TO AVOID CIRCULAR IMPORTS
             try:
+                # CRITICAL: Import inside the function to avoid circular imports
                 from .tasks import generate_report_task
+                
                 # Start the Celery task asynchronously
                 task = generate_report_task.delay(str(report.id))
                 
                 # Store task ID for reference
                 report.task_id = task.id
-                report.save()
+                report.save(update_fields=['task_id', 'updated_at'])
                 
                 logger.info(f"Started Celery task {task.id} for report {report.id}")
+                print(f"✅ [DJANGO VIEW] Celery task started: {task.id} for report {report.id}")
                 
             except Exception as celery_error:
                 # If Celery fails, mark as failed
                 logger.error(f"Failed to start Celery task: {celery_error}")
                 report.status = 'failed'
                 report.error_message = f"Failed to start background task: {celery_error}"
-                report.save()
+                report.save(update_fields=['status', 'error_message', 'updated_at'])
             
             headers = self.get_success_headers(serializer.data)
             return Response({
@@ -72,6 +79,7 @@ class ReportViewSet(mixins.CreateModelMixin,
             }, status=status.HTTP_201_CREATED, headers=headers)
             
         except Exception as e:
+            logger.error(f"Failed to create report request: {e}")
             return Response({
                 'data': None,
                 'success': False,
@@ -110,6 +118,9 @@ class ReportViewSet(mixins.CreateModelMixin,
             status_filter = [s for s in status_filter if s]
             
             # ✅ Get REAL data from database (not mock)
+            # IMPORT INSIDE FUNCTION to avoid circular imports
+            from .services import ReportService
+            
             analytics_data = ReportService.get_analytics_data(
                 start_date=start_date,
                 end_date=end_date,
@@ -127,6 +138,7 @@ class ReportViewSet(mixins.CreateModelMixin,
             })
             
         except Exception as e:
+            logger.error(f"Failed to fetch analytics data: {e}")
             return Response({
                 'data': None,
                 'success': False,
@@ -146,6 +158,7 @@ class ReportViewSet(mixins.CreateModelMixin,
             task_status = 'unknown'
             if hasattr(report, 'task_id') and report.task_id:
                 try:
+                    # Import inside function to avoid circular imports
                     from celery.result import AsyncResult
                     from CFIT.celery import app
                     
@@ -156,10 +169,11 @@ class ReportViewSet(mixins.CreateModelMixin,
                     if result.failed() and report.status != 'failed':
                         report.status = 'failed'
                         report.error_message = str(result.result)
-                        report.save()
+                        report.save(update_fields=['status', 'error_message', 'updated_at'])
                     
-                except:
+                except Exception as task_error:
                     task_status = 'unknown'
+                    logger.error(f"Failed to check Celery task status: {task_error}")
             
             return Response({
                 'data': {
@@ -180,6 +194,7 @@ class ReportViewSet(mixins.CreateModelMixin,
             })
             
         except Exception as e:
+            logger.error(f"Failed to get report status: {e}")
             return Response({
                 'data': None,
                 'success': False,
@@ -216,6 +231,9 @@ class ReportViewSet(mixins.CreateModelMixin,
             status_filter = [s for s in status_filter if s]
             
             # ✅ Get REAL data from database
+            # IMPORT INSIDE FUNCTION to avoid circular imports
+            from .services import ReportService
+            
             data = ReportService.get_analytics_data(
                 start_date=start_date,
                 end_date=end_date,
@@ -281,6 +299,7 @@ class ReportViewSet(mixins.CreateModelMixin,
             return response
             
         except Exception as e:
+            logger.error(f"CSV export failed: {e}")
             return Response({
                 "error": str(e),
                 "detail": "CSV export failed"
@@ -328,6 +347,7 @@ class ReportViewSet(mixins.CreateModelMixin,
             return response
             
         except Exception as e:
+            logger.error(f"Failed to download report: {e}")
             return Response({
                 'error': str(e),
                 'detail': 'Failed to download report'
@@ -373,13 +393,10 @@ class ReportViewSet(mixins.CreateModelMixin,
             })
             
         except Exception as e:
+            logger.error(f"Failed to fetch metrics: {e}")
             return Response({
                 'data': None,
                 'success': False,
                 'error': str(e),
                 'message': 'Failed to fetch metrics'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# Add logging
-import logging
-logger = logging.getLogger(__name__)
