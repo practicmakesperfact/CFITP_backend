@@ -146,10 +146,8 @@ urlpatterns = [
     path('api/v1/reports/<uuid:pk>/status/', ReportViewSet.as_view({'get': 'status'}), name='report-status'),
     path('api/v1/reports/<uuid:pk>/download/', ReportViewSet.as_view({'get': 'download'}), name='report-download'),
 
-
     path('api/v1/users/admin/', UserViewSet.as_view({'get': 'admin_users_list'}), name='admin-users-list'),
 ]
-
 # Serve media in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
